@@ -11,7 +11,7 @@ from cocotb.triggers import (
 # CONSTANTS
 # ================================================================
 
-EXPECTED_MISR = 0x0D
+EXPECTED_MISR = 0x93
 
 SERIAL_DATA = 0
 SERIAL_SHIFT = 1
