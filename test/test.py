@@ -19,7 +19,7 @@ async def load_serial(dut, value, bits):
 
 async def press_button(dut, button_bit):
     """Press and release a button"""
-    current = dut.ui_in.value
+    current = int(dut.ui_in.value)
     dut.ui_in.value = current | (1 << button_bit)
     await ClockCycles(dut.clk, 2)
     dut.ui_in.value = current & ~(1 << button_bit)
@@ -139,9 +139,10 @@ async def test_bist(dut):
     # Wait for BIST to complete (256 patterns)
     await ClockCycles(dut.clk, 600)
     
-    # Check outputs
-    bist_done = (dut.uio_out.value >> 3) & 1
-    test_pass = (dut.uio_out.value >> 4) & 1
+    # Check outputs (convert to int first)
+    uio_val = int(dut.uio_out.value)
+    bist_done = (uio_val >> 3) & 1
+    test_pass = (uio_val >> 4) & 1
     
     cocotb.log.info("BIST Done: %d", bist_done)
     cocotb.log.info("Test PASS: %d", test_pass)
@@ -204,8 +205,9 @@ async def test_all(dut):
     await ClockCycles(dut.clk, 5)
     dut.ui_in.value = 0
     await ClockCycles(dut.clk, 600)
-    bist_done = (dut.uio_out.value >> 3) & 1
-    test_pass = (dut.uio_out.value >> 4) & 1
+    uio_val = int(dut.uio_out.value)
+    bist_done = (uio_val >> 3) & 1
+    test_pass = (uio_val >> 4) & 1
     cocotb.log.info("BIST Done: %d", bist_done)
     cocotb.log.info("Test PASS: %d", test_pass)
     
