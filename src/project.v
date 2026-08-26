@@ -16,9 +16,7 @@ module tt_um_italu (
     input  wire       rst_n
 );
 
-    // =========================================================================
-    // Pin Assignment
-    // =========================================================================
+    // Pin assignment
     wire user_data_in    = ui_in[0];
     wire control_button  = ui_in[1];
     wire step_button     = ui_in[2];
@@ -27,9 +25,7 @@ module tt_um_italu (
     wire scan_in         = ui_in[6];
     wire bist_start      = ui_in[7];
 
-    // =========================================================================
     // ALU Operations
-    // =========================================================================
     localparam [2:0] OP_ADD = 3'b000;
     localparam [2:0] OP_SUB = 3'b001;
     localparam [2:0] OP_AND = 3'b010;
@@ -39,9 +35,7 @@ module tt_um_italu (
     localparam [2:0] OP_SHL = 3'b110;
     localparam [2:0] OP_CMP = 3'b111;
 
-    // =========================================================================
-    // Registers
-    // =========================================================================
+    // Registers - only ONE always block drives each
     reg [7:0] operand_a;
     reg [7:0] operand_b;
     reg [2:0] operation;
@@ -50,6 +44,8 @@ module tt_um_italu (
     reg       carry_flag;
     reg       negative_flag;
     reg       overflow_flag;
+    
+    // DFT registers
     reg [7:0] lfsr;
     reg [7:0] misr;
     reg       fault_injected;
@@ -60,11 +56,11 @@ module tt_um_italu (
     reg [7:0] pattern_count;
     reg       bist_done_reg;
     reg       test_pass;
-    reg scan_out_reg;
+    reg       scan_out_reg;
     reg [31:0] scan_reg;
     reg [1:0] display_digit;
     reg [6:0] segment_data_reg;
-    reg [3:0] digit_select_reg;
+    reg [1:0] digit_select_reg;  // Changed to 2 bits
 
     // Button debouncing
     reg button_sync1, button_sync2;
@@ -95,13 +91,12 @@ module tt_um_italu (
     // =========================================================================
     // ALU Combinational Logic
     // =========================================================================
-    wire [7:0] alu_result_wire;
-    wire       carry_flag_wire;
-    wire       overflow_flag_wire;
-
-    assign {carry_flag_wire, alu_result_wire} = 
-        (operation == OP_ADD) ? ({1'b0, operand_a} + {1'b0, operand_b}) :
-        (operation == OP_SUB) ? ({1'b0, operand_a} - {1'b0, operand_b}) :
+    wire [8:0] alu_add_result = {1'b0, operand_a} + {1'b0, operand_b};
+    wire [8:0] alu_sub_result = {1'b0, operand_a} - {1'b0, operand_b};
+    
+    wire [8:0] alu_result_9bit = 
+        (operation == OP_ADD) ? alu_add_result :
+        (operation == OP_SUB) ? alu_sub_result :
         (operation == OP_AND) ? {1'b0, operand_a & operand_b} :
         (operation == OP_OR)  ? {1'b0, operand_a | operand_b} :
         (operation == OP_XOR) ? {1'b0, operand_a ^ operand_b} :
@@ -110,8 +105,12 @@ module tt_um_italu (
         (operation == OP_CMP) ? {1'b0, (operand_a == operand_b) ? 8'h01 :
                                         (operand_a > operand_b) ? 8'h02 : 8'h00} :
         {1'b0, 8'h00};
-
-    assign overflow_flag_wire = 
+    
+    wire [7:0] alu_result_wire = alu_result_9bit[7:0];
+    wire       carry_flag_wire = alu_result_9bit[8];
+    wire       zero_flag_wire = (alu_result_wire == 8'h00);
+    wire       negative_flag_wire = alu_result_wire[7];
+    wire       overflow_flag_wire = 
         (operation == OP_ADD) ? ((operand_a[7] & operand_b[7] & ~alu_result_wire[7]) |
                                  (~operand_a[7] & ~operand_b[7] & alu_result_wire[7])) :
         (operation == OP_SUB) ? ((operand_a[7] & ~operand_b[7] & ~alu_result_wire[7]) |
@@ -119,7 +118,7 @@ module tt_um_italu (
         1'b0;
 
     // =========================================================================
-    // Main Control FSM
+    // Main Control (ONE always block drives all registers)
     // =========================================================================
     localparam [2:0] ST_IDLE     = 3'b000;
     localparam [2:0] ST_LOAD_OP  = 3'b001;
@@ -127,6 +126,8 @@ module tt_um_italu (
     localparam [2:0] ST_LOAD_B   = 3'b011;
     localparam [2:0] ST_EXECUTE  = 3'b100;
     localparam [2:0] ST_DONE     = 3'b101;
+
+    wire bist_active = (bist_state != 2'b00);
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -184,18 +185,18 @@ module tt_um_italu (
                 end
                 
                 ST_EXECUTE: begin
-                    if (button_pressed || step_pressed) begin
+                    if (button_pressed || step_pressed || bist_active) begin
                         alu_result    <= alu_result_wire;
                         carry_flag    <= carry_flag_wire;
                         overflow_flag <= overflow_flag_wire;
-                        zero_flag     <= (alu_result_wire == 8'h00);
-                        negative_flag <= alu_result_wire[7];
+                        zero_flag     <= zero_flag_wire;
+                        negative_flag <= negative_flag_wire;
                         user_state <= ST_DONE;
                     end
                 end
                 
                 ST_DONE: begin
-                    if (step_pressed) begin
+                    if (step_pressed && !bist_active) begin
                         user_state <= ST_IDLE;
                     end
                 end
@@ -208,7 +209,7 @@ module tt_um_italu (
     end
 
     // =========================================================================
-    // BIST Controller
+    // BIST Controller (separate always block, only drives BIST registers)
     // =========================================================================
     localparam [1:0] BIST_IDLE     = 2'b00;
     localparam [1:0] BIST_GENERATE = 2'b01;
@@ -238,6 +239,7 @@ module tt_um_italu (
                 
                 BIST_GENERATE: begin
                     lfsr <= {lfsr[6:0], lfsr_feedback};
+                    // Update operands for BIST
                     operand_a <= lfsr;
                     operand_b <= {lfsr[3:0], lfsr[7:4]};
                     operation <= lfsr[2:0];
@@ -245,11 +247,7 @@ module tt_um_italu (
                 end
                 
                 BIST_APPLY: begin
-                    alu_result    <= alu_result_wire;
-                    carry_flag    <= carry_flag_wire;
-                    overflow_flag <= overflow_flag_wire;
-                    zero_flag     <= (alu_result_wire == 8'h00);
-                    negative_flag <= alu_result_wire[7];
+                    // Update MISR with result
                     misr <= {misr[6:0], misr[7] ^ misr[5] ^ alu_result_wire[0]};
                     
                     if (pattern_count == 8'hFF) begin
@@ -292,40 +290,6 @@ module tt_um_italu (
     // =========================================================================
     // 7-Segment Display
     // =========================================================================
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            display_digit    <= 2'b00;
-            segment_data_reg <= 7'b1111111;
-            digit_select_reg <= 4'b1111;
-        end else begin
-            display_digit <= display_digit + 1'b1;
-            
-            case (display_digit)
-                2'b00: begin
-                    digit_select_reg <= 4'b1110;
-                    segment_data_reg <= seg7_decode(alu_result[3:0]);
-                end
-                2'b01: begin
-                    digit_select_reg <= 4'b1101;
-                    segment_data_reg <= seg7_decode(alu_result[7:4]);
-                end
-                2'b10: begin
-                    digit_select_reg <= 4'b1011;
-                    segment_data_reg <= seg7_decode({1'b0, operation});
-                end
-                2'b11: begin
-                    digit_select_reg <= 4'b0111;
-                    segment_data_reg <= seg7_decode({zero_flag, carry_flag, negative_flag, overflow_flag});
-                end
-                default: begin
-                    digit_select_reg <= 4'b1111;
-                    segment_data_reg <= 7'b1111111;
-                end
-            endcase
-        end
-    end
-
-    // 7-segment decoder function
     function [6:0] seg7_decode;
         input [3:0] digit;
         begin
@@ -350,6 +314,39 @@ module tt_um_italu (
             endcase
         end
     endfunction
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            display_digit    <= 2'b00;
+            segment_data_reg <= 7'b1111111;
+            digit_select_reg <= 2'b00;
+        end else begin
+            display_digit <= display_digit + 1'b1;
+            
+            case (display_digit)
+                2'b00: begin
+                    digit_select_reg <= 2'b01;
+                    segment_data_reg <= seg7_decode(alu_result[3:0]);
+                end
+                2'b01: begin
+                    digit_select_reg <= 2'b10;
+                    segment_data_reg <= seg7_decode(alu_result[7:4]);
+                end
+                2'b10: begin
+                    digit_select_reg <= 2'b01;
+                    segment_data_reg <= seg7_decode({1'b0, operation});
+                end
+                2'b11: begin
+                    digit_select_reg <= 2'b10;
+                    segment_data_reg <= seg7_decode({zero_flag, carry_flag, negative_flag, overflow_flag});
+                end
+                default: begin
+                    digit_select_reg <= 2'b00;
+                    segment_data_reg <= 7'b1111111;
+                end
+            endcase
+        end
+    end
 
     // =========================================================================
     // Output Assignments
