@@ -1075,10 +1075,16 @@ module tt_um_italu (
 
                 BIST_IDLE: begin
 
-                    bist_done <=
-                        1'b0;
+                    /*
+                     * bist_done remains asserted here
+                     * until a new BIST run is started,
+                     * so it can be polled reliably.
+                     */
 
                     if (bist_start) begin
+
+                        bist_done <=
+                            1'b0;
 
                         lfsr <=
                             8'h01;

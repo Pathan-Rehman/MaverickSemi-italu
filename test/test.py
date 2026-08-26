@@ -27,9 +27,12 @@ BIST_START = 7
 
 async def reset_dut(dut):
 
+    global uio_config
+
     dut.rst_n.value = 0
     dut.ui_in.value = 0
     dut.uio_in.value = 0
+    uio_config = 0
 
     await ClockCycles(
         dut.clk,
@@ -46,7 +49,15 @@ async def reset_dut(dut):
 
 # ================================================================
 # UIO CONFIGURATION
+#
+# A shadow copy of the uio_in configuration is kept on the Python
+# side because reading back dut.uio_in in the same simulation
+# timestep as a write can return a stale value, which would
+# silently drop previously written fields.
 # ================================================================
+
+uio_config = 0
+
 
 def make_uio_config(
     enable=0,
@@ -83,16 +94,20 @@ def set_fault(
     fault_bit=0
 ):
 
+    global uio_config
+
     current_status = (
-        int(dut.uio_in.value) >> 6
+        uio_config >> 6
     ) & 0x3
 
-    dut.uio_in.value = make_uio_config(
+    uio_config = make_uio_config(
         enable=enable,
         fault_type=fault_type,
         fault_bit=fault_bit,
         status=current_status
     )
+
+    dut.uio_in.value = uio_config
 
 
 def set_status(
@@ -100,17 +115,15 @@ def set_status(
     status
 ):
 
-    value = int(
-        dut.uio_in.value
-    )
+    global uio_config
 
-    value &= 0x3F
+    uio_config &= 0x3F
 
-    value |= (
+    uio_config |= (
         (status & 0x3) << 6
     )
 
-    dut.uio_in.value = value
+    dut.uio_in.value = uio_config
 
 
 # ================================================================
