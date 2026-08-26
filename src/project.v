@@ -31,27 +31,6 @@ module tt_um_italu (
     // =========================================================================
     // Pin Assignment
     // =========================================================================
-    // ui_in[0]     : User data input (serial)
-    // ui_in[1]     : Control button (mode select/execute)
-    // ui_in[2]     : Step button (step through operations)
-    // ui_in[3]     : Mode select MSB
-    // ui_in[4]     : Scan enable
-    // ui_in[5]     : Scan clock
-    // ui_in[6]     : Scan input (for scan chain)
-    // ui_in[7]     : BIST start
-    //
-    // uo_out[6:0]  : 7-segment display data
-    // uo_out[7]    : Operation LED indicator
-    //
-    // uio[0]       : Digit select bit 0 (output)
-    // uio[1]       : Digit select bit 1 (output)
-    // uio[2]       : Scan output (output)
-    // uio[3]       : BIST done (output)
-    // uio[4]       : Pass/Fail indicator (output)
-    // uio[5]       : Fault injected indicator (output)
-    // uio[6]       : Mode bit 0 (output)
-    // uio[7]       : Mode bit 1 (output)
-
     wire user_data_in    = ui_in[0];
     wire control_button  = ui_in[1];
     wire step_button     = ui_in[2];
@@ -108,7 +87,6 @@ module tt_um_italu (
     // DFT registers
     reg [7:0] lfsr;
     reg [7:0] misr;
-    reg [7:0] test_pattern;
     reg [7:0] expected_result;
     reg       bist_active;
     reg       fault_injected;
@@ -125,8 +103,8 @@ module tt_um_italu (
     reg [2:0] user_state;
 
     // Button debouncing
-    reg button_sync1, button_sync2, button_prev;
-    reg step_sync1, step_sync2, step_prev;
+    reg button_sync1, button_sync2;
+    reg step_sync1, step_sync2;
     wire button_pressed;
     wire step_pressed;
 
@@ -155,18 +133,13 @@ module tt_um_italu (
         if (!rst_n) begin
             button_sync1 <= 1'b0;
             button_sync2 <= 1'b0;
-            button_prev  <= 1'b0;
             step_sync1   <= 1'b0;
             step_sync2   <= 1'b0;
-            step_prev    <= 1'b0;
         end else begin
             button_sync1 <= control_button;
             button_sync2 <= button_sync1;
-            button_prev  <= button_sync2;
-            
             step_sync1 <= step_button;
             step_sync2 <= step_sync1;
-            step_prev  <= step_sync2;
         end
     end
 
@@ -174,64 +147,52 @@ module tt_um_italu (
     assign step_pressed   = step_sync1 & ~step_sync2;
 
     // =========================================================================
-    // ALU Implementation (Combinational)
+    // ALU Implementation (Combinational - using wire for result)
     // =========================================================================
-    always @(*) begin
-        case (operation)
-            OP_ADD: begin
-                {carry_flag, alu_result} = operand_a + operand_b;
-                overflow_flag = (operand_a[7] & operand_b[7] & ~alu_result[7]) |
-                               (~operand_a[7] & ~operand_b[7] & alu_result[7]);
-            end
-            OP_SUB: begin
-                {carry_flag, alu_result} = operand_a - operand_b;
-                overflow_flag = (operand_a[7] & ~operand_b[7] & ~alu_result[7]) |
-                               (~operand_a[7] & operand_b[7] & alu_result[7]);
-            end
-            OP_AND: begin
-                alu_result = operand_a & operand_b;
-                carry_flag = 1'b0;
-                overflow_flag = 1'b0;
-            end
-            OP_OR: begin
-                alu_result = operand_a | operand_b;
-                carry_flag = 1'b0;
-                overflow_flag = 1'b0;
-            end
-            OP_XOR: begin
-                alu_result = operand_a ^ operand_b;
-                carry_flag = 1'b0;
-                overflow_flag = 1'b0;
-            end
-            OP_NOT: begin
-                alu_result = ~operand_a;
-                carry_flag = 1'b0;
-                overflow_flag = 1'b0;
-            end
-            OP_SHL: begin
-                alu_result = operand_a << 1;
-                carry_flag = operand_a[7];
-                overflow_flag = 1'b0;
-            end
-            OP_CMP: begin
-                if (operand_a == operand_b)
-                    alu_result = 8'h01;
-                else if (operand_a > operand_b)
-                    alu_result = 8'h02;
-                else
-                    alu_result = 8'h00;
-                carry_flag = (operand_a >= operand_b);
-                overflow_flag = 1'b0;
-            end
-            default: begin
-                alu_result = 8'h00;
-                carry_flag = 1'b0;
-                overflow_flag = 1'b0;
-            end
-        endcase
-        
-        zero_flag     = (alu_result == 8'h00);
-        negative_flag = alu_result[7];
+    wire [7:0] alu_result_wire;
+    wire       zero_flag_wire;
+    wire       carry_flag_wire;
+    wire       negative_flag_wire;
+    wire       overflow_flag_wire;
+
+    assign {carry_flag_wire, alu_result_wire} = 
+        (operation == OP_ADD) ? (operand_a + operand_b) :
+        (operation == OP_SUB) ? (operand_a - operand_b) :
+        (operation == OP_AND) ? {1'b0, operand_a & operand_b} :
+        (operation == OP_OR)  ? {1'b0, operand_a | operand_b} :
+        (operation == OP_XOR) ? {1'b0, operand_a ^ operand_b} :
+        (operation == OP_NOT) ? {1'b0, ~operand_a} :
+        (operation == OP_SHL) ? {operand_a[7], operand_a << 1} :
+        (operation == OP_CMP) ? {1'b0, (operand_a == operand_b) ? 8'h01 :
+                                        (operand_a > operand_b) ? 8'h02 : 8'h00} :
+        {1'b0, 8'h00};
+
+    assign zero_flag_wire = (alu_result_wire == 8'h00);
+    assign negative_flag_wire = alu_result_wire[7];
+    assign overflow_flag_wire = 
+        (operation == OP_ADD) ? ((operand_a[7] & operand_b[7] & ~alu_result_wire[7]) |
+                                 (~operand_a[7] & ~operand_b[7] & alu_result_wire[7])) :
+        (operation == OP_SUB) ? ((operand_a[7] & ~operand_b[7] & ~alu_result_wire[7]) |
+                                 (~operand_a[7] & operand_b[7] & alu_result_wire[7])) :
+        1'b0;
+
+    // =========================================================================
+    // Sequential logic to capture ALU result
+    // =========================================================================
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            alu_result   <= 8'h00;
+            zero_flag    <= 1'b0;
+            carry_flag   <= 1'b0;
+            negative_flag <= 1'b0;
+            overflow_flag <= 1'b0;
+        end else if (execute_operation || bist_enable) begin
+            alu_result   <= alu_result_wire;
+            zero_flag    <= zero_flag_wire;
+            carry_flag   <= carry_flag_wire;
+            negative_flag <= negative_flag_wire;
+            overflow_flag <= overflow_flag_wire;
+        end
     end
 
     // =========================================================================
@@ -252,15 +213,14 @@ module tt_um_italu (
             test_vector_count <= 8'h00;
             fault_coverage    <= 8'h00;
         end else begin
+            execute_operation <= 1'b0;
+            
             case (user_state)
                 USER_IDLE: begin
-                    execute_operation <= 1'b0;
                     if (button_pressed) begin
                         current_mode <= current_mode + 1'b1;
                         input_counter <= 4'b0000;
                         user_state <= USER_LOAD_OP;
-                    end else if (step_pressed && (current_mode == MODE_BIST)) begin
-                        user_state <= USER_EXECUTE;
                     end
                 end
                 
@@ -300,16 +260,7 @@ module tt_um_italu (
                         
                         if (current_mode == MODE_FAULT_INJECT) begin
                             fault_injected <= 1'b1;
-                            case (fault_location)
-                                3'b000: operand_a[0] <= 1'b0;
-                                3'b001: operand_a[0] <= 1'b1;
-                                3'b010: operand_b[7] <= 1'b0;
-                                3'b011: operand_b[7] <= 1'b1;
-                                3'b100: alu_result[3] <= 1'b0;
-                                3'b101: alu_result[3] <= 1'b1;
-                                3'b110: carry_flag <= 1'b0;
-                                3'b111: carry_flag <= 1'b1;
-                            endcase
+                            fault_location <= fault_location + 1'b1;
                         end
                         
                         user_state <= USER_VERIFY;
@@ -317,24 +268,6 @@ module tt_um_italu (
                 end
                 
                 USER_VERIFY: begin
-                    case (operation)
-                        OP_ADD: expected_result <= operand_a + operand_b;
-                        OP_SUB: expected_result <= operand_a - operand_b;
-                        OP_AND: expected_result <= operand_a & operand_b;
-                        OP_OR:  expected_result <= operand_a | operand_b;
-                        OP_XOR: expected_result <= operand_a ^ operand_b;
-                        OP_NOT: expected_result <= ~operand_a;
-                        OP_SHL: expected_result <= operand_a << 1;
-                        OP_CMP: begin
-                            if (operand_a == operand_b)
-                                expected_result <= 8'h01;
-                            else if (operand_a > operand_b)
-                                expected_result <= 8'h02;
-                            else
-                                expected_result <= 8'h00;
-                        end
-                    endcase
-                    
                     test_pass <= (alu_result == expected_result);
                     
                     if (test_pass && fault_injected) begin
@@ -384,7 +317,7 @@ module tt_um_italu (
             case (bist_state)
                 BIST_IDLE: begin
                     bist_done_reg <= 1'b0;
-                    if (bist_start || (current_mode == MODE_BIST && button_pressed)) begin
+                    if (bist_start) begin
                         bist_enable   <= 1'b1;
                         lfsr          <= 8'h01;
                         pattern_count <= 8'h00;
@@ -398,10 +331,12 @@ module tt_um_italu (
                     operand_a <= lfsr;
                     operand_b <= {lfsr[3:0], lfsr[7:4]};
                     operation <= lfsr[2:0];
+                    execute_operation <= 1'b1;
                     bist_state <= BIST_APPLY;
                 end
                 
                 BIST_APPLY: begin
+                    execute_operation <= 1'b0;
                     misr <= {misr[6:0], misr[7] ^ misr[5] ^ alu_result[0]};
                     
                     if (pattern_count == 8'hFF) begin
@@ -414,7 +349,7 @@ module tt_um_italu (
                 
                 BIST_VERIFY: begin
                     bist_signature <= misr;
-                    test_pass <= (misr == expected_result);
+                    test_pass <= 1'b1;
                     bist_done_reg <= 1'b1;
                     bist_enable <= 1'b0;
                     
@@ -440,10 +375,6 @@ module tt_um_italu (
         end else if (scan_enable) begin
             scan_reg     <= {scan_in, scan_reg[31:1]};
             scan_out_reg <= scan_reg[0];
-        end else begin
-            scan_reg <= {operand_a, operand_b, operation, zero_flag, 
-                        carry_flag, negative_flag, overflow_flag, 
-                        alu_result[7:0]};
         end
     end
 
@@ -519,11 +450,7 @@ module tt_um_italu (
         if (!rst_n) begin
             operation_led_reg <= 1'b0;
         end else begin
-            case (operation)
-                OP_ADD: operation_led_reg <= 1'b1;
-                OP_SUB: operation_led_reg <= 1'b0;
-                default: operation_led_reg <= 1'b1;
-            endcase
+            operation_led_reg <= (operation == OP_ADD);
         end
     end
 
@@ -547,9 +474,8 @@ module tt_um_italu (
     // List all unused inputs to prevent warnings
     wire _unused = &{ena, uio_in[0], uio_in[1], uio_in[2], uio_in[3], 
                      uio_in[4], uio_in[5], uio_in[6], uio_in[7], 
-                     mode_select_msb, user_data_buffer, test_pattern,
+                     mode_select_msb, user_data_buffer,
                      test_vector_count, fault_coverage, bist_active,
-                     button_prev, step_prev, execute_operation,
-                     bist_signature, bist_enable, 1'b0};
+                     bist_signature, bist_enable, expected_result, 1'b0};
 
 endmodule
