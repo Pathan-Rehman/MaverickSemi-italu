@@ -31,11 +31,17 @@ async def reset_dut(dut):
     dut.ui_in.value = 0
     dut.uio_in.value = 0
 
-    await ClockCycles(dut.clk, 5)
+    await ClockCycles(
+        dut.clk,
+        5
+    )
 
     dut.rst_n.value = 1
 
-    await ClockCycles(dut.clk, 3)
+    await ClockCycles(
+        dut.clk,
+        3
+    )
 
 
 # ================================================================
@@ -51,7 +57,9 @@ def make_uio_config(
 
     value = 0
 
-    value |= enable & 0x1
+    value |= (
+        enable & 0x1
+    )
 
     value |= (
         (fault_type & 0x3) << 1
@@ -87,7 +95,10 @@ def set_fault(
     )
 
 
-def set_status(dut, status):
+def set_status(
+    dut,
+    status
+):
 
     value = int(
         dut.uio_in.value
@@ -121,13 +132,11 @@ async def load_instruction(
         (operand_a & 0xFF)
     )
 
-    # LSB first
-
     for i in range(20):
 
         bit = (
             instruction >> i
-        ) & 0x1
+        ) & 1
 
         dut.ui_in.value = (
             (1 << SERIAL_SHIFT)
@@ -199,10 +208,14 @@ def reference_alu(
     b &= 0xFF
 
     if opcode == 0x0:
-        return (a + b) & 0xFF
+        return (
+            a + b
+        ) & 0xFF
 
     if opcode == 0x1:
-        return (a - b) & 0xFF
+        return (
+            a - b
+        ) & 0xFF
 
     if opcode == 0x2:
         return a & b
@@ -214,10 +227,14 @@ def reference_alu(
         return a ^ b
 
     if opcode == 0x5:
-        return (~a) & 0xFF
+        return (
+            ~a
+        ) & 0xFF
 
     if opcode == 0x6:
-        return (a << 1) & 0xFF
+        return (
+            a << 1
+        ) & 0xFF
 
     if opcode == 0x7:
         return a >> 1
@@ -225,8 +242,10 @@ def reference_alu(
     if opcode == 0x8:
 
         if a & 0x80:
+
             return (
-                (a >> 1) |
+                (a >> 1)
+                |
                 0x80
             )
 
@@ -245,7 +264,7 @@ def reference_alu(
         return (
             (a >> 1)
             |
-            ((a & 0x01) << 7)
+            ((a & 1) << 7)
         )
 
     if opcode == 0xB:
@@ -267,10 +286,16 @@ def reference_alu(
         )
 
     if opcode == 0xC:
-        return min(a, b)
+        return min(
+            a,
+            b
+        )
 
     if opcode == 0xD:
-        return max(a, b)
+        return max(
+            a,
+            b
+        )
 
     if opcode == 0xE:
 
@@ -356,6 +381,11 @@ async def wait_for_bist(
     dut,
     timeout_cycles=600
 ):
+    """
+    Wait for BIST DONE and then wait one additional simulation
+    delta/cycle so that nonblocking assignments to test_pass and
+    related outputs have propagated before the result is sampled.
+    """
 
     for _ in range(
         timeout_cycles
@@ -370,6 +400,24 @@ async def wait_for_bist(
         )
 
         if status & 0x10:
+
+            # IMPORTANT:
+            # BIST_DONE becomes visible on the same clock edge
+            # that updates test_pass using a nonblocking
+            # assignment. Wait one more clock before sampling.
+            await Timer(
+                1,
+                unit="ns"
+            )
+
+            await RisingEdge(
+                dut.clk
+            )
+
+            status = int(
+                dut.uio_out.value
+            )
+
             return status
 
     raise AssertionError(
@@ -385,7 +433,9 @@ async def wait_for_bist(
 @cocotb.test()
 async def test_add(dut):
 
-    await reset_dut(dut)
+    await reset_dut(
+        dut
+    )
 
     set_fault(
         dut,
@@ -406,7 +456,8 @@ async def test_add(dut):
     )
 
     cocotb.log.info(
-        "ADD PASS: 0x0F + 0x03 = 0x%02X",
+        "ADD PASS: "
+        "0x0F + 0x03 = 0x%02X",
         result
     )
 
@@ -418,7 +469,9 @@ async def test_add(dut):
 @cocotb.test()
 async def test_sub(dut):
 
-    await reset_dut(dut)
+    await reset_dut(
+        dut
+    )
 
     set_fault(
         dut,
@@ -439,7 +492,8 @@ async def test_sub(dut):
     )
 
     cocotb.log.info(
-        "SUB PASS: 0x0A - 0x05 = 0x%02X",
+        "SUB PASS: "
+        "0x0A - 0x05 = 0x%02X",
         result
     )
 
@@ -451,7 +505,9 @@ async def test_sub(dut):
 @cocotb.test()
 async def test_all_alu_operations(dut):
 
-    await reset_dut(dut)
+    await reset_dut(
+        dut
+    )
 
     set_fault(
         dut,
@@ -514,13 +570,16 @@ async def test_all_alu_operations(dut):
 @cocotb.test()
 async def test_alu_flags(dut):
 
-    await reset_dut(dut)
+    await reset_dut(
+        dut
+    )
 
     set_fault(
         dut,
         enable=0
     )
 
+    # 0x7F + 0x01 = 0x80
     result = await execute_instruction(
         dut,
         0x0,
@@ -545,6 +604,7 @@ async def test_alu_flags(dut):
     assert overflow == 1
     assert negative == 1
 
+    # 0xFF + 0x01 = 0x00
     result = await execute_instruction(
         dut,
         0x0,
@@ -578,7 +638,9 @@ async def test_alu_flags(dut):
 @cocotb.test()
 async def test_normal_fault_injection(dut):
 
-    await reset_dut(dut)
+    await reset_dut(
+        dut
+    )
 
     set_fault(
         dut,
@@ -622,7 +684,9 @@ async def test_normal_fault_injection(dut):
 @cocotb.test()
 async def test_bist_pass(dut):
 
-    await reset_dut(dut)
+    await reset_dut(
+        dut
+    )
 
     set_fault(
         dut,
@@ -639,11 +703,15 @@ async def test_bist_pass(dut):
 
     assert (
         (status >> 4) & 1
-    ) == 1
+    ) == 1, (
+        "BIST DONE not asserted"
+    )
 
     assert (
         (status >> 5) & 1
-    ) == 1
+    ) == 1, (
+        "Fault-free BIST did not PASS"
+    )
 
     set_status(
         dut,
@@ -660,7 +728,8 @@ async def test_bist_pass(dut):
     )
 
     assert signature == EXPECTED_MISR, (
-        f"Expected MISR 0x{EXPECTED_MISR:02X}, "
+        f"Incorrect MISR: "
+        f"expected 0x{EXPECTED_MISR:02X}, "
         f"got 0x{signature:02X}"
     )
 
@@ -676,10 +745,6 @@ async def test_bist_pass(dut):
 
 # ================================================================
 # TEST 7 - FAULT-INJECTED BIST
-#
-# IMPORTANT:
-# Use bit 7. The previous bit-3 test was not sufficiently
-# sensitized by this particular pseudo-random BIST workload.
 # ================================================================
 
 @cocotb.test()
@@ -687,7 +752,9 @@ async def test_bist_fault_detection(dut):
 
     for fault_type in range(4):
 
-        await reset_dut(dut)
+        await reset_dut(
+            dut
+        )
 
         set_fault(
             dut,
@@ -767,9 +834,9 @@ async def test_bist_fault_detection(dut):
 @cocotb.test()
 async def test_fault_counter(dut):
 
-    await reset_dut(dut)
-
-    # Counter must start at zero.
+    await reset_dut(
+        dut
+    )
 
     set_fault(
         dut,
@@ -791,11 +858,9 @@ async def test_fault_counter(dut):
     )
 
     assert count == 0, (
-        f"Expected counter=0, "
+        f"Expected initial fault counter 0, "
         f"got {count}"
     )
-
-    # Use bit 7 for the same reason as test 7.
 
     set_fault(
         dut,
@@ -815,6 +880,12 @@ async def test_fault_counter(dut):
 
     status = await wait_for_bist(
         dut
+    )
+
+    assert (
+        (status >> 4) & 1
+    ) == 1, (
+        "Faulted BIST did not complete"
     )
 
     assert (
@@ -855,7 +926,9 @@ async def test_fault_counter(dut):
 @cocotb.test()
 async def test_scan_chain(dut):
 
-    await reset_dut(dut)
+    await reset_dut(
+        dut
+    )
 
     set_fault(
         dut,
@@ -900,8 +973,12 @@ async def test_scan_chain(dut):
             dut.uio_out.value
         )
 
+        scan_bit = (
+            status >> 6
+        ) & 1
+
         scanned_bits.append(
-            (status >> 6) & 1
+            scan_bit
         )
 
     dut.ui_in.value = 0
@@ -917,7 +994,8 @@ async def test_scan_chain(dut):
         )
 
     scanned_a = (
-        scanned_value & 0xFF
+        scanned_value
+        & 0xFF
     )
 
     scanned_b = (
@@ -946,7 +1024,9 @@ async def test_scan_chain(dut):
 @cocotb.test()
 async def test_cycle_counter(dut):
 
-    await reset_dut(dut)
+    await reset_dut(
+        dut
+    )
 
     set_status(
         dut,
@@ -958,7 +1038,7 @@ async def test_cycle_counter(dut):
         unit="ns"
     )
 
-    before = int(
+    count_before = int(
         dut.uio_out.value
     )
 
@@ -967,16 +1047,17 @@ async def test_cycle_counter(dut):
         10
     )
 
-    after = int(
+    count_after = int(
         dut.uio_out.value
     )
 
-    assert after != before
+    assert count_after != count_before
 
     cocotb.log.info(
-        "CYCLE COUNTER PASS: %d -> %d",
-        before,
-        after
+        "CYCLE COUNTER PASS: "
+        "%d -> %d",
+        count_before,
+        count_after
     )
 
 
@@ -987,7 +1068,9 @@ async def test_cycle_counter(dut):
 @cocotb.test()
 async def test_complete_system(dut):
 
-    await reset_dut(dut)
+    await reset_dut(
+        dut
+    )
 
     cocotb.log.info(
         "========================================"
@@ -1046,7 +1129,9 @@ async def test_complete_system(dut):
 
     assert (
         (status >> 5) & 1
-    ) == 1
+    ) == 1, (
+        "Fault-free BIST failed"
+    )
 
     cocotb.log.info(
         "Fault-free BIST PASS"
@@ -1077,7 +1162,9 @@ async def test_complete_system(dut):
 
     assert (
         (status >> 5) & 1
-    ) == 0
+    ) == 0, (
+        "Faulted BIST failed to detect fault"
+    )
 
     cocotb.log.info(
         "Fault detection PASS"
