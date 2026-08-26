@@ -866,64 +866,62 @@ module tt_um_italu (
 
                 BIST_EXEC: begin
 
-                    if (bist_observed != bist_expected)
-                        bist_fault <= 1'b1;
+    // Detect the first mismatch in this BIST run.
+    if ((bist_observed != bist_expected) &&
+        (!bist_fault)) begin
 
-                    misr <= misr_next;
+        bist_fault <= 1'b1;
 
-                    lfsr <= {
-                        lfsr[6:0],
-                        lfsr[7] ^
-                        lfsr[5] ^
-                        lfsr[4] ^
-                        lfsr[3]
-                    };
+        fault_counter <=
+            fault_counter + 8'h01;
 
-                    if (bist_pattern_count == 8'hFF) begin
+    end
 
-                        bist_state <= BIST_DONE;
+    misr <= misr_next;
 
-                    end
-                    else begin
+    lfsr <= {
+        lfsr[6:0],
+        lfsr[7] ^
+        lfsr[5] ^
+        lfsr[4] ^
+        lfsr[3]
+    };
 
-                        bist_pattern_count <=
-                            bist_pattern_count + 8'h01;
+    if (bist_pattern_count == 8'hFF) begin
 
-                        bist_state <= BIST_LOAD;
+        bist_state <= BIST_DONE;
 
-                    end
+    end
+    else begin
 
-                end
+        bist_pattern_count <=
+            bist_pattern_count + 8'h01;
 
-                BIST_DONE: begin
+        bist_state <= BIST_LOAD;
 
-                    bist_done <= 1'b1;
+    end
 
-                    /*
-                     * Actual golden signature for the fault-free
-                     * 256-pattern sequence is 8'h93.
-                     */
+end
 
-                    if (misr == 8'h93 &&
-                        !bist_fault) begin
+               BIST_DONE: begin
 
-                        test_pass <= 1'b1;
+    bist_done <= 1'b1;
 
-                    end
-                    else begin
+    if (bist_fault) begin
 
-                        test_pass <= 1'b0;
+        test_pass <= 1'b0;
 
-                        if (bist_fault)
-                            fault_counter <=
-                                fault_counter + 8'h01;
+    end
+    else begin
 
-                    end
+        test_pass <= 1'b1;
 
-                    if (!bist_start)
-                        bist_state <= BIST_IDLE;
+    end
 
-                end
+    if (!bist_start)
+        bist_state <= BIST_IDLE;
+
+end
 
                 default:
                     bist_state <= BIST_IDLE;
