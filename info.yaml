@@ -2,10 +2,10 @@
 project:
   title:        "iTALU: Interactive Testable Arithmetic Logic Unit"
   author:       "Your Name"
-  discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "8-bit ALU with user-controlled DFT, BIST, scan chain, and fault injection for educational demonstration"
+  discord:      ""
+  description:  "8-bit ALU with DFT features including BIST and scan chain"
   language:     "Verilog"
-  clock_hz:     50000000  # 50 MHz clock frequency
+  clock_hz:     0       # No specific clock frequency requirement
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
   tiles: "1x1"
@@ -14,43 +14,40 @@ project:
   top_module:  "tt_um_italu"
 
   # List your project's source files here.
-  # Source files must be in ./src and you must list each source file separately, one per line.
-  # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
     - "project.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
-# This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: "DATA_IN"      # Serial data input for operands and operation codes
-  ui[1]: "CTRL_BTN"     # Control button - mode select/execute
-  ui[2]: "STEP_BTN"     # Step button - step through operations
-  ui[3]: "MODE_SEL"     # Mode select MSB (0=functional, 1=test modes)
-  ui[4]: "SCAN_EN"      # Scan chain enable
-  ui[5]: "SCAN_CLK"     # Scan chain clock
-  ui[6]: "SCAN_IN"      # Scan chain data input
-  ui[7]: "BIST_START"   # BIST start trigger
+  ui[0]: "DATA_IN"
+  ui[1]: "LOAD_EN"
+  ui[2]: "EXECUTE"
+  ui[3]: ""
+  ui[4]: ""
+  ui[5]: ""
+  ui[6]: "SCAN_EN"
+  ui[7]: "BIST_START"
 
   # Outputs
-  uo[0]: "SEG_A"        # 7-segment segment A
-  uo[1]: "SEG_B"        # 7-segment segment B
-  uo[2]: "SEG_C"        # 7-segment segment C
-  uo[3]: "SEG_D"        # 7-segment segment D
-  uo[4]: "SEG_E"        # 7-segment segment E
-  uo[5]: "SEG_F"        # 7-segment segment F
-  uo[6]: "SEG_G"        # 7-segment segment G
-  uo[7]: "OP_LED"       # Operation indicator LED
+  uo[0]: "RESULT_0"
+  uo[1]: "RESULT_1"
+  uo[2]: "RESULT_2"
+  uo[3]: "RESULT_3"
+  uo[4]: "RESULT_4"
+  uo[5]: "RESULT_5"
+  uo[6]: "RESULT_6"
+  uo[7]: "RESULT_7"
 
   # Bidirectional pins
-  uio[0]: "DIGIT_SEL0"  # 7-segment digit select bit 0
-  uio[1]: "DIGIT_SEL1"  # 7-segment digit select bit 1
-  uio[2]: "SCAN_OUT"    # Scan chain data output
-  uio[3]: "BIST_DONE"   # BIST completion flag
-  uio[4]: "TEST_PASS"   # Test pass/fail indicator
-  uio[5]: "FAULT_FLAG"  # Fault injected indicator
-  uio[6]: "MODE_OUT0"   # Current mode bit 0
-  uio[7]: "MODE_OUT1"   # Current mode bit 1
+  uio[0]: "ZERO_FLAG"
+  uio[1]: "CARRY_FLAG"
+  uio[2]: "NEG_FLAG"
+  uio[3]: "OVF_FLAG"
+  uio[4]: "BIST_DONE"
+  uio[5]: "TEST_PASS"
+  uio[6]: "SCAN_OUT"
+  uio[7]: ""
 
 # Do not change!
 yaml_version: 6
