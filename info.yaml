@@ -1,17 +1,17 @@
 # Tiny Tapeout project information
 project:
-  title:        ""      # Project title
-  author:       ""      # Your name
+  title:        "iTALU: Interactive Testable Arithmetic Logic Unit"
+  author:       "Your Name"
   discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  ""      # One line description of what your project does
-  language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
-  clock_hz:     0       # Clock frequency in Hz (or 0 if not applicable)
+  description:  "8-bit ALU with user-controlled DFT, BIST, scan chain, and fault injection for educational demonstration"
+  language:     "Verilog"
+  clock_hz:     50000000  # 50 MHz clock frequency
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
-  tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
+  tiles: "1x1"
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
-  top_module:  "tt_um_example"
+  top_module:  "tt_um_italu"
 
   # List your project's source files here.
   # Source files must be in ./src and you must list each source file separately, one per line.
@@ -23,34 +23,34 @@ project:
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: ""
-  ui[1]: ""
-  ui[2]: ""
-  ui[3]: ""
-  ui[4]: ""
-  ui[5]: ""
-  ui[6]: ""
-  ui[7]: ""
+  ui[0]: "DATA_IN"      # Serial data input for operands and operation codes
+  ui[1]: "CTRL_BTN"     # Control button - mode select/execute
+  ui[2]: "STEP_BTN"     # Step button - step through operations
+  ui[3]: "MODE_SEL"     # Mode select MSB (0=functional, 1=test modes)
+  ui[4]: "SCAN_EN"      # Scan chain enable
+  ui[5]: "SCAN_CLK"     # Scan chain clock
+  ui[6]: "SCAN_IN"      # Scan chain data input
+  ui[7]: "BIST_START"   # BIST start trigger
 
   # Outputs
-  uo[0]: ""
-  uo[1]: ""
-  uo[2]: ""
-  uo[3]: ""
-  uo[4]: ""
-  uo[5]: ""
-  uo[6]: ""
-  uo[7]: ""
+  uo[0]: "SEG_A"        # 7-segment segment A
+  uo[1]: "SEG_B"        # 7-segment segment B
+  uo[2]: "SEG_C"        # 7-segment segment C
+  uo[3]: "SEG_D"        # 7-segment segment D
+  uo[4]: "SEG_E"        # 7-segment segment E
+  uo[5]: "SEG_F"        # 7-segment segment F
+  uo[6]: "SEG_G"        # 7-segment segment G
+  uo[7]: "OP_LED"       # Operation indicator LED
 
   # Bidirectional pins
-  uio[0]: ""
-  uio[1]: ""
-  uio[2]: ""
-  uio[3]: ""
-  uio[4]: ""
-  uio[5]: ""
-  uio[6]: ""
-  uio[7]: ""
+  uio[0]: "DIGIT_SEL0"  # 7-segment digit select bit 0
+  uio[1]: "DIGIT_SEL1"  # 7-segment digit select bit 1
+  uio[2]: "SCAN_OUT"    # Scan chain data output
+  uio[3]: "BIST_DONE"   # BIST completion flag
+  uio[4]: "TEST_PASS"   # Test pass/fail indicator
+  uio[5]: "FAULT_FLAG"  # Fault injected indicator
+  uio[6]: "MODE_OUT0"   # Current mode bit 0
+  uio[7]: "MODE_OUT1"   # Current mode bit 1
 
 # Do not change!
 yaml_version: 6
