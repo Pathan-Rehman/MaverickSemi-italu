@@ -1,99 +1,289 @@
-Here's the updated `README.md` for your iTALU project:
-
-```markdown
-<!---
-
-This file is used to generate your project datasheet. Please fill in the information below and delete any unused
-sections.
-
-You can also include images in this folder and reference them in the markdown. Each image must be less than
-512 kb in size, and the combined size of all images must be less than 1 MB.
--->
-
 # iTALU: Interactive Testable Arithmetic Logic Unit
 
-## How it works
+## Project Overview
 
-iTALU is an 8-bit Arithmetic Logic Unit (ALU) with comprehensive Design-for-Testability (DFT) features, designed for educational demonstration and practical testing applications.
+iTALU is an 8-bit Arithmetic Logic Unit (ALU) with comprehensive Design-for-Testability (DFT) features, designed for Tiny Tapeout using IHP 180nm technology. The project demonstrates industry-standard testing techniques with user-controlled interaction and visual feedback.
 
-### Functional Overview
+### Key Features
 
-The ALU supports 8 operations:
-- **ADD** (000): Addition with carry and overflow detection
-- **SUB** (001): Subtraction with borrow and overflow detection
-- **AND** (010): Bitwise AND
-- **OR** (011): Bitwise OR
-- **XOR** (100): Bitwise XOR
-- **NOT** (101): Bitwise NOT (1's complement)
-- **SHIFT** (110): Shift left by 1 bit
-- **COMPARE** (111): Comparison (equal, greater, less)
+- 8-bit ALU with 8 arithmetic and logical operations
+- 4 status flags (Zero, Carry, Negative, Overflow)
+- Full scan chain on all internal registers
+- Built-In Self-Test (BIST) with LFSR and MISR
+- User-controlled fault injection for testing
+- Interactive test modes with step-by-step execution
+- 7-segment display interface for visual output
+- Multiple test modes for comprehensive verification
 
-The ALU generates 4 status flags:
-- **Zero Flag (Z)**: Set when result is 0x00
-- **Carry Flag (C)**: Set on carry out or borrow
-- **Negative Flag (N)**: Set when MSB of result is 1
-- **Overflow Flag (O)**: Set on signed arithmetic overflow
+### Specifications
 
-### DFT Features
+| Parameter | Value |
+|-----------|-------|
+| Technology | IHP 180nm (SG13G2) |
+| Tile Size | 1x1 (160x100 um) |
+| Clock Frequency | Up to 50 MHz |
+| Gate Count | ~350-400 gates |
+| Power Supply | 1.8V |
+| I/O Pins | 8 input, 8 output, 8 bidirectional |
 
-The design integrates multiple DFT techniques:
+---
 
-1. **Scan Chain**: 
-   - 32-bit scan chain covering all registers
-   - Controlled by SCAN_EN and SCAN_CLK
-   - Serial input/output for test vectors
+## Architecture
 
-2. **Built-In Self-Test (BIST)**:
-   - 8-bit LFSR pattern generator
-   - 8-bit MISR response compactor
-   - 256 test patterns
-   - Automatic pass/fail detection
+### Block Diagram
 
-3. **Fault Injection**:
-   - 8 programmable fault locations
-   - Stuck-at-0 and stuck-at-1 fault models
-   - User-controlled fault activation
+```
++-----------------------------------------------------------+
+|                        iTALU                             |
++-----------------------------------------------------------+
+|                                                           |
+|  +--------------+     +----------------------------+     |
+|  | User         |     |      ALU CORE              |     |
+|  | Interface    |---->|  +----------------------+  |     |
+|  | Controller   |     |  | 8-bit ALU            |  |     |
+|  |              |     |  | (8 operations)       |  |     |
+|  +--------------+     |  +----------------------+  |     |
+|                       |  +----------------------+  |     |
+|  +--------------+     |  | Status Flags         |  |     |
+|  | Test Pattern |---->|  | (Z,C,N,O)            |  |     |
+|  | Generator    |     |  +----------------------+  |     |
+|  +--------------+     +----------------------------+     |
+|                                                           |
+|  +--------------+     +----------------------------+     |
+|  | Fault        |---->|  DFT Infrastructure        |     |
+|  | Injector     |     |  +----------------------+  |     |
+|  +--------------+     |  | Scan Chain           |  |     |
+|                       |  +----------------------+  |     |
+|  +--------------+     |  | BIST Controller      |  |     |
+|  | Result       |<----|  +----------------------+  |     |
+|  | Comparator   |     |  | Boundary Scan        |  |     |
+|  +--------------+     |  +----------------------+  |     |
+|                       +----------------------------+     |
+|                                                           |
+|  +--------------------------------------------------+   |
+|  |        7-SEGMENT DISPLAY CONTROLLER               |   |
+|  |  Shows: Operation, Inputs, Output, Flags          |   |
+|  +--------------------------------------------------+   |
++-----------------------------------------------------------+
+```
 
-4. **Boundary Scan**:
-   - Test access to all I/O pins
-   - Mode selection for functional/test operation
+---
 
-### User Interaction Modes
+## ALU Operations
 
-The design operates in 4 user-selectable modes:
+| Operation | Code | Description | Example |
+|-----------|------|-------------|---------|
+| ADD | 000 | Addition with carry | A + B |
+| SUB | 001 | Subtraction with borrow | A - B |
+| AND | 010 | Bitwise AND | A AND B |
+| OR | 011 | Bitwise OR | A OR B |
+| XOR | 100 | Bitwise XOR | A XOR B |
+| NOT | 101 | Bitwise NOT | NOT A |
+| SHIFT | 110 | Shift left by 1 | A SHIFT LEFT |
+| COMPARE | 111 | Comparison | A EQUAL B |
 
-1. **Functional Mode** (00): Normal ALU operation
-2. **Manual Test Mode** (01): User-controlled testing with specific vectors
-3. **BIST Mode** (10): Automatic self-test with LFSR/MISR
-4. **Fault Injection Mode** (11): Testing with injected faults
+---
 
-### Display System
+## Status Flags
 
-The design outputs to a 4-digit 7-segment display:
-- **Digits 0-1**: ALU result (hexadecimal)
-- **Digit 2**: Operation code (0-7)
-- **Digit 3**: Status flags (ZCNO)
+| Flag | Bit Position | Description |
+|------|-------------|-------------|
+| Zero (Z) | Bit 3 | Result is 0x00 |
+| Carry (C) | Bit 2 | Carry out or borrow |
+| Negative (N) | Bit 1 | MSB of result is 1 |
+| Overflow (O) | Bit 0 | Signed arithmetic overflow |
 
-## How to test
+---
 
-### Basic ALU Operation
+## Design-for-Testability (DFT) Implementation
 
-1. Apply power and reset (rst_n low then high)
-2. Set MODE_SEL = 0 (Functional Mode)
-3. Press CTRL_BTN to cycle to operation selection
-4. Serial load 3-bit operation code via DATA_IN
-5. Serial load 8-bit operand A via DATA_IN
-6. Serial load 8-bit operand B via DATA_IN
-7. Press CTRL_BTN to execute
-8. Observe result on 7-segment display
+### 1. Scan Chain
 
-### Manual Test Mode
+The scan chain is 32 bits long covering all registers:
 
-1. Set MODE_SEL = 1, then press CTRL_BTN to select Manual Test Mode
-2. Load specific test vectors using DATA_IN
-3. Execute and compare with expected results
-4. Use STEP_BTN to step through operations
-5. Check TEST_PASS output for pass/fail status
+```
+SCAN_IN -> Operand_A(8) -> Operand_B(8) -> Operation(3) -> Zero(1) -> Carry(1) -> Negative(1) -> Overflow(1) -> ALU_Result(8) -> SCAN_OUT
+```
+
+**Features:**
+- 32-bit scan chain covering all registers
+- Separate scan clock (SCAN_CLK)
+- Scan enable control (SCAN_EN)
+- Serial input/output for test patterns
+
+### 2. Built-In Self-Test (BIST)
+
+```
++-----------+    +----------------+    +-----------+
+|   LFSR    |--->|      ALU       |--->|   MISR    |
+|  Pattern  |    |  (Under Test)  |    | Response  |
+| Generator |    |                |    | Compactor |
++-----------+    +----------------+    +-----------+
+```
+
+**BIST Features:**
+- 8-bit LFSR with primitive polynomial
+- 256 unique test patterns
+- MISR for response compaction
+- Automatic pass/fail detection
+- Signature comparison
+
+### 3. Fault Injection
+
+| Fault Location | Description | Type |
+|----------------|-------------|------|
+| 0 | Operand A bit 0 | Stuck-at-0 |
+| 1 | Operand A bit 0 | Stuck-at-1 |
+| 2 | Operand B bit 7 | Stuck-at-0 |
+| 3 | Operand B bit 7 | Stuck-at-1 |
+| 4 | ALU Result bit 3 | Stuck-at-0 |
+| 5 | ALU Result bit 3 | Stuck-at-1 |
+| 6 | Carry Flag | Stuck-at-0 |
+| 7 | Carry Flag | Stuck-at-1 |
+
+### 4. Test Modes
+
+| Mode | Code | Description |
+|------|------|-------------|
+| Functional | 00 | Normal ALU operation |
+| Manual Test | 01 | User-controlled testing |
+| BIST | 10 | Automatic self-test |
+| Fault Inject | 11 | Testing with injected faults |
+
+---
+
+## Pin Configuration
+
+### Input Pins (ui_in)
+
+| Pin | Name | Description |
+|-----|------|-------------|
+| ui_in[0] | DATA_IN | Serial data input for operands |
+| ui_in[1] | CTRL_BTN | Control button |
+| ui_in[2] | STEP_BTN | Step button |
+| ui_in[3] | MODE_SEL | Mode select MSB |
+| ui_in[4] | SCAN_EN | Scan chain enable |
+| ui_in[5] | SCAN_CLK | Scan chain clock |
+| ui_in[6] | SCAN_IN | Scan chain data input |
+| ui_in[7] | BIST_START | BIST start trigger |
+
+### Output Pins (uo_out)
+
+| Pin | Name | Description |
+|-----|------|-------------|
+| uo_out[0] | SEG_A | 7-segment segment A |
+| uo_out[1] | SEG_B | 7-segment segment B |
+| uo_out[2] | SEG_C | 7-segment segment C |
+| uo_out[3] | SEG_D | 7-segment segment D |
+| uo_out[4] | SEG_E | 7-segment segment E |
+| uo_out[5] | SEG_F | 7-segment segment F |
+| uo_out[6] | SEG_G | 7-segment segment G |
+| uo_out[7] | OP_LED | Operation indicator LED |
+
+### Bidirectional Pins (uio)
+
+| Pin | Name | Description |
+|-----|------|-------------|
+| uio[0] | DIGIT_SEL0 | Digit select bit 0 |
+| uio[1] | DIGIT_SEL1 | Digit select bit 1 |
+| uio[2] | SCAN_OUT | Scan chain output |
+| uio[3] | BIST_DONE | BIST completion flag |
+| uio[4] | TEST_PASS | Test pass/fail |
+| uio[5] | FAULT_FLAG | Fault injected |
+| uio[6] | MODE_OUT0 | Current mode bit 0 |
+| uio[7] | MODE_OUT1 | Current mode bit 1 |
+
+---
+
+## Display Interface
+
+### 7-Segment Display Format
+
+```
++-------+-------+-------+-------+
+|  D3   |  D2   |  D1   |  D0   |
++-------+-------+-------+-------+
+| Result| Result|  Op   | Flags |
+| High  | Low   | Code  | ZCNO  |
++-------+-------+-------+-------+
+```
+
+### Display Examples
+
+ADD Operation (15 + 3 = 18):
+
+```
++-------+-------+-------+-------+
+|   1   |   8   |   0   |   0   |
+|       |       |  ADD  | NoFlg |
++-------+-------+-------+-------+
+```
+
+---
+
+## How to Test
+
+### Test Setup
+
+Required Hardware:
+- Tiny Tapeout board with iTALU chip
+- 4-digit 7-segment display (common cathode)
+- 2 push buttons
+- DIP switches or jumpers
+- LED with resistor
+- Connecting wires
+
+### Basic ALU Operation Test
+
+Step 1: Initialize
+1. Apply power
+2. Assert reset (rst_n = 0)
+3. Release reset (rst_n = 1)
+4. Set MODE_SEL = 0 (Functional Mode)
+
+Step 2: Load Operation
+1. Press CTRL_BTN to enter operation selection
+2. Serial load 3 bits via DATA_IN
+3. Toggle DATA_IN for each bit
+4. Press STEP_BTN to advance
+
+Step 3: Load Operand A
+1. Serial load 8 bits via DATA_IN
+2. Toggle DATA_IN for each bit
+3. Press STEP_BTN after each bit
+
+Step 4: Load Operand B
+1. Serial load 8 bits via DATA_IN
+2. Toggle DATA_IN for each bit
+3. Press STEP_BTN after each bit
+
+Step 5: Execute
+1. Press CTRL_BTN to execute operation
+2. Observe result on 7-segment display
+3. Check status flags
+
+### Example Test Cases
+
+Test Case 1: Basic Addition
+- Operation: ADD (000)
+- Operand A: 0x0F (15)
+- Operand B: 0x03 (3)
+- Expected Result: 0x12 (18)
+- Expected Flags: 0000 (none)
+
+Test Case 2: Overflow Detection
+- Operation: ADD (000)
+- Operand A: 0x7F (127)
+- Operand B: 0x01 (1)
+- Expected Result: 0x80 (128)
+- Expected Flags: 1001 (Overflow + Negative)
+
+Test Case 3: Subtraction with Borrow
+- Operation: SUB (001)
+- Operand A: 0x05 (5)
+- Operand B: 0x0A (10)
+- Expected Result: 0xFB (-5)
+- Expected Flags: 0110 (Carry + Negative)
 
 ### BIST Testing
 
@@ -110,7 +300,6 @@ The design outputs to a 4-digit 7-segment display:
 3. Execute operation with fault injected
 4. Compare result with expected value
 5. Check FAULT_FLAG to verify fault detection
-6. Monitor fault coverage via test vector count
 
 ### Scan Chain Testing
 
@@ -120,114 +309,61 @@ The design outputs to a 4-digit 7-segment display:
 4. Observe SCAN_OUT for response
 5. Set SCAN_EN = 0 for normal operation
 
-### Example Test Sequence
+---
 
-```
-1. Reset: rst_n = 0, then 1
-2. Mode: Functional (MODE_SEL = 0)
-3. Load operation: 000 (ADD)
-4. Load operand A: 0x0F (15)
-5. Load operand B: 0x03 (3)
-6. Execute: Press CTRL_BTN
-7. Expected display: 0x12 (18)
-8. Flags: 0000 (no flags set)
-```
+## External Hardware
 
-### Fault Injection Example
+### Required Components
 
-```
-1. Mode: Fault Injection (cycle with CTRL_BTN)
-2. Load operation: 000 (ADD)
-3. Load operand A: 0x05 (5)
-4. Load operand B: 0x03 (3)
-5. Execute with fault at bit 0
-6. Expected: 0x08 (8), but gets 0x09 (9)
-7. FAULT_FLAG = 1 indicates fault detected
-```
-
-## External hardware
-
-### Required Hardware
-
-1. **7-Segment Display** (4-digit common cathode)
-   - Connected to uo_out[6:0] for segments A-G
-   - Connected to uio[1:0] for digit selection
-   - Current limiting resistors (330Ω) recommended
-
-2. **Push Buttons** (2x)
-   - Control button connected to ui_in[1]
-   - Step button connected to ui_in[2]
-   - Pull-down resistors (10kΩ)
-
-3. **DIP Switch or Jumpers** (8x)
-   - Mode selection to ui_in[3]
-   - Scan control to ui_in[4:6]
-   - BIST start to ui_in[7]
-   - Optional: Data input to ui_in[0]
-
-4. **LED** (1x)
-   - Operation indicator to uo_out[7]
-   - Current limiting resistor (330Ω)
-
-### Optional Hardware
-
-1. **Logic Analyzer**
-   - Monitor scan chain outputs
-   - Verify timing
-   - Debug test sequences
-
-2. **Function Generator**
-   - Provide test clock signals
-   - Generate input patterns
-
-3. **Arduino/Raspberry Pi**
-   - Automate test sequences
-   - Serial data input
-   - Read test results
+1. 4-digit 7-segment display (common cathode)
+2. 2 push buttons with pull-down resistors (10k ohm)
+3. DIP switches or jumpers for mode selection
+4. LED with 330 ohm resistor for operation indicator
+5. Connecting wires
 
 ### Connection Diagram
 
 ```
-Tiny Tapeout Board     External Hardware
-─────────────────     ─────────────────
-ui_in[0] (DATA_IN) ── Push button or GPIO
-ui_in[1] (CTRL_BTN)── Push button
-ui_in[2] (STEP_BTN)── Push button
-ui_in[3] (MODE_SEL)── DIP switch
-ui_in[4] (SCAN_EN) ── DIP switch
-ui_in[5] (SCAN_CLK)── Clock source or GPIO
-ui_in[6] (SCAN_IN) ── GPIO
-ui_in[7] (BIST_START)─ Push button or GPIO
+Tiny Tapeout Board          External Hardware
+-------------------         -----------------
+ui_in[0] DATA_IN     ---->  Push button or GPIO
+ui_in[1] CTRL_BTN    ---->  Push button
+ui_in[2] STEP_BTN    ---->  Push button
+ui_in[3] MODE_SEL    ---->  DIP switch
+ui_in[4] SCAN_EN     ---->  DIP switch
+ui_in[5] SCAN_CLK    ---->  Clock source
+ui_in[6] SCAN_IN     ---->  GPIO
+ui_in[7] BIST_START  ---->  Push button
 
-uo_out[0] (SEG_A) ── 7-segment display segment A
-uo_out[1] (SEG_B) ── 7-segment display segment B
-uo_out[2] (SEG_C) ── 7-segment display segment C
-uo_out[3] (SEG_D) ── 7-segment display segment D
-uo_out[4] (SEG_E) ── 7-segment display segment E
-uo_out[5] (SEG_F) ── 7-segment display segment F
-uo_out[6] (SEG_G) ── 7-segment display segment G
-uo_out[7] (OP_LED)── LED with resistor
+uo_out[0] SEG_A      ---->  7-seg segment A
+uo_out[1] SEG_B      ---->  7-seg segment B
+uo_out[2] SEG_C      ---->  7-seg segment C
+uo_out[3] SEG_D      ---->  7-seg segment D
+uo_out[4] SEG_E      ---->  7-seg segment E
+uo_out[5] SEG_F      ---->  7-seg segment F
+uo_out[6] SEG_G      ---->  7-seg segment G
+uo_out[7] OP_LED     ---->  LED with 330 ohm
 
-uio[0] (DIGIT_SEL0)─ 7-segment digit 0 select
-uio[1] (DIGIT_SEL1)─ 7-segment digit 1 select
-uio[2] (SCAN_OUT) ── Logic analyzer or GPIO
-uio[3] (BIST_DONE)── LED or GPIO
-uio[4] (TEST_PASS)── LED or GPIO
-uio[5] (FAULT_FLAG)─ LED or GPIO
-uio[6] (MODE_OUT0)── LED or GPIO
-uio[7] (MODE_OUT1)── LED or GPIO
+uio[0] DIGIT_SEL0    ---->  Digit 0 select
+uio[1] DIGIT_SEL1    ---->  Digit 1 select
+uio[2] SCAN_OUT      ---->  Logic analyzer
+uio[3] BIST_DONE     ---->  LED
+uio[4] TEST_PASS     ---->  LED
+uio[5] FAULT_FLAG    ---->  LED
 ```
 
-### Power Requirements
+---
 
-- VDD: 1.8V (IHP 180nm)
-- Maximum current: < 10 mA (excluding external components)
-- External pull-up/pull-down resistors as needed
-```
+## License
 
-This README provides comprehensive documentation for your iTALU project including:
-- Detailed functional description
-- Complete testing instructions
-- Hardware requirements
-- Connection diagrams
-- Example test sequences
+This project is licensed under Apache-2.0.
+
+## Author
+
+Your Name
+
+## Acknowledgments
+
+- Tiny Tapeout for providing the platform
+- IHP for the 180nm PDK
+- Open source EDA community
