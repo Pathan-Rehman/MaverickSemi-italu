@@ -1,5 +1,4 @@
 `default_nettype none
-`timescale 1ns/1ps
 
 module tt_um_italu (
     input  wire [7:0] ui_in,
@@ -1461,7 +1460,11 @@ module tt_um_italu (
 
     assign unused =
         ena ^
-        uio_in[4];
+        uio_in[4] ^
+        ui_in[4] ^
+        ui_in[5] ^
+        alu_carry ^
+        alu_overflow;
 
 endmodule
 
