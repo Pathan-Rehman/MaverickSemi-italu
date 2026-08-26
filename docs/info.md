@@ -2,153 +2,184 @@
 
 ## Project Overview
 
-iTALU is an 8-bit Arithmetic Logic Unit (ALU) with comprehensive Design-for-Testability (DFT) features, designed for Tiny Tapeout using IHP 180nm technology. The project demonstrates industry-standard testing techniques with user-controlled interaction and visual feedback.
+iTALU is an 8-bit Arithmetic Logic Unit (ALU) with comprehensive
+Design-for-Testability (DFT) features, designed for Tiny Tapeout using the
+IHP SG13G2 (130nm) technology. The project demonstrates industry-standard
+testing techniques — scan chain, LFSR/MISR-based BIST, and fault injection —
+with a simple serial user interface.
 
 ### Key Features
 
-- 8-bit ALU with 8 arithmetic and logical operations
+- 8-bit ALU with 16 operations (arithmetic, logic, shifts/rotates,
+  compare, min/max, saturating arithmetic)
 - 4 status flags (Zero, Carry, Negative, Overflow)
-- Full scan chain on all internal registers
-- Built-In Self-Test (BIST) with LFSR and MISR
-- User-controlled fault injection for testing
-- Interactive test modes with step-by-step execution
-- 7-segment display interface for visual output
-- Multiple test modes for comprehensive verification
+- 20-bit serial instruction interface (LSB first)
+- 64-bit scan chain covering all internal state
+- Built-In Self-Test (BIST) with 8-bit LFSR pattern generator and
+  8-bit MISR response compactor (256 patterns per run)
+- User-controlled fault injection: stuck-at-0/1, inversion, coupling
+- Status readback mux: flags/BIST status, MISR signature, fault counter,
+  cycle counter
 
 ### Specifications
 
 | Parameter | Value |
 |-----------|-------|
-| Technology | IHP 180nm (SG13G2) |
-| Tile Size | 1x1 (160x100 um) |
-| Clock Frequency | Up to 50 MHz |
-| Gate Count | ~350-400 gates |
-| Power Supply | 1.8V |
+| Technology | IHP SG13G2 (130nm) |
+| Tile Size | 1x1 |
+| Clock Frequency | 50 MHz (tested), no hard requirement |
+| Top Module | `tt_um_italu` |
 | I/O Pins | 8 input, 8 output, 8 bidirectional |
 
 ---
 
 ## Architecture
 
-### Block Diagram
-
 ```
-+-----------------------------------------------------------+
-|                        iTALU                             |
-+-----------------------------------------------------------+
-|                                                           |
-|  +--------------+     +----------------------------+     |
-|  | User         |     |      ALU CORE              |     |
-|  | Interface    |---->|  +----------------------+  |     |
-|  | Controller   |     |  | 8-bit ALU            |  |     |
-|  |              |     |  | (8 operations)       |  |     |
-|  +--------------+     |  +----------------------+  |     |
-|                       |  +----------------------+  |     |
-|  +--------------+     |  | Status Flags         |  |     |
-|  | Test Pattern |---->|  | (Z,C,N,O)            |  |     |
-|  | Generator    |     |  +----------------------+  |     |
-|  +--------------+     +----------------------------+     |
-|                                                           |
-|  +--------------+     +----------------------------+     |
-|  | Fault        |---->|  DFT Infrastructure        |     |
-|  | Injector     |     |  +----------------------+  |     |
-|  +--------------+     |  | Scan Chain           |  |     |
-|                       |  +----------------------+  |     |
-|  +--------------+     |  | BIST Controller      |  |     |
-|  | Result       |<----|  +----------------------+  |     |
-|  | Comparator   |     |  | Boundary Scan        |  |     |
-|  +--------------+     |  +----------------------+  |     |
-|                       +----------------------------+     |
-|                                                           |
-|  +--------------------------------------------------+   |
-|  |        7-SEGMENT DISPLAY CONTROLLER               |   |
-|  |  Shows: Operation, Inputs, Output, Flags          |   |
-|  +--------------------------------------------------+   |
-+-----------------------------------------------------------+
+                    +---------------------------------------------+
+                    |                  tt_um_italu                |
+                    |                                             |
+ ui_in[0] DATA ---->| +------------------+   +-----------------+   |
+ ui_in[1] LOAD ---->| | Serial           |   | Normal ALU      |   |
+ ui_in[2] EXEC ---->| | Instruction Reg  |-->| + Result/Flags  |-->| uo_out = result
+                    | | (20b, LSB first) |   +-----------------+   |
+                    | +--------+---------+                         |
+                    |          |                                   |
+                    |          v   +-----------------+             |
+                    | +------->|   | Direct Exec ALU |             |
+                    | |        |   +-----------------+             |
+                    | |  +-----+---------+                         |
+                    | |  | Fault Injector|--+ (SA0/SA1/invert/couple)
+                    | |  +---------------+                         |
+ uio_in fault cfg ->| |                                            |
+                    | v                                            |
+                    | +------------------+   +-----------------+   |
+ ui_in[7] START --->| | BIST FSM         |   | LFSR -> MISR    |   |
+                    | | IDLE/LOAD/EXEC/  |<->| 256 patterns    |   |
+                    | | DONE             |   | golden sig 0x93 |   |
+                    | +------------------+   +-----------------+   |
+                    |                                              |
+ ui_in[3] CAPTURE ->| +------------------+   +-----------------+   |
+ ui_in[6] SHIFT --->| | 64-bit Scan Chain|   | Status Mux      |-->| uio_out
+                    | +------------------+   +-----------------+   |
+                    +---------------------------------------------+
 ```
 
 ---
 
 ## ALU Operations
 
-| Operation | Code | Description | Example |
-|-----------|------|-------------|---------|
-| ADD | 000 | Addition with carry | A + B |
-| SUB | 001 | Subtraction with borrow | A - B |
-| AND | 010 | Bitwise AND | A AND B |
-| OR | 011 | Bitwise OR | A OR B |
-| XOR | 100 | Bitwise XOR | A XOR B |
-| NOT | 101 | Bitwise NOT | NOT A |
-| SHIFT | 110 | Shift left by 1 | A SHIFT LEFT |
-| COMPARE | 111 | Comparison | A EQUAL B |
-
----
+| Code | Operation | Description |
+|------|-----------|-------------|
+| 0x0 | ADD | A + B with carry out |
+| 0x1 | SUB | A - B (carry = no borrow) |
+| 0x2 | AND | Bitwise AND |
+| 0x3 | OR | Bitwise OR |
+| 0x4 | XOR | Bitwise XOR |
+| 0x5 | NOT | Bitwise NOT of A |
+| 0x6 | SHL | Logical shift A left by 1 |
+| 0x7 | SHR | Logical shift A right by 1 |
+| 0x8 | SAR | Arithmetic shift A right by 1 |
+| 0x9 | ROL | Rotate A left by 1 |
+| 0xA | ROR | Rotate A right by 1 |
+| 0xB | SLT | Signed less-than: 1 if A < B else 0 |
+| 0xC | MIN | Unsigned minimum of A and B |
+| 0xD | MAX | Unsigned maximum of A and B |
+| 0xE | SATADD | Saturating signed add (clamps at 0x7F / 0x80) |
+| 0xF | SATSUB | Saturating signed subtract (clamps at 0x7F / 0x80) |
 
 ## Status Flags
 
+With `STATUS_SEL = 00`, `uio_out[3:0]` shows:
+
 | Flag | Bit Position | Description |
-|------|-------------|-------------|
-| Zero (Z) | Bit 3 | Result is 0x00 |
-| Carry (C) | Bit 2 | Carry out or borrow |
-| Negative (N) | Bit 1 | MSB of result is 1 |
-| Overflow (O) | Bit 0 | Signed arithmetic overflow |
+|------|--------------|-------------|
+| Zero (Z) | bit 0 | Result is 0x00 |
+| Carry (C) | bit 1 | Carry out (ADD) or no borrow (SUB) |
+| Negative (N) | bit 2 | MSB of result is 1 |
+| Overflow (O) | bit 3 | Signed arithmetic overflow |
+
+The same select also reports `[4]` = BIST done, `[5]` = BIST pass and
+`[6]` = scan out.
 
 ---
 
 ## Design-for-Testability (DFT) Implementation
 
-### 1. Scan Chain
+### 1. Serial Instruction Interface
 
-The scan chain is 32 bits long covering all registers:
+A 20-bit shift register is filled LSB first while `LOAD_EN` is high:
 
 ```
-SCAN_IN -> Operand_A(8) -> Operand_B(8) -> Operation(3) -> Zero(1) -> Carry(1) -> Negative(1) -> Overflow(1) -> ALU_Result(8) -> SCAN_OUT
+[19:16] opcode
+[15:8]  operand B
+[7:0]   operand A
 ```
 
-**Features:**
-- 32-bit scan chain covering all registers
-- Separate scan clock (SCAN_CLK)
-- Scan enable control (SCAN_EN)
-- Serial input/output for test patterns
+Pulsing `EXECUTE` latches the operands/op into the normal ALU registers and
+stores the (possibly fault-injected) result and flags.
 
-### 2. Built-In Self-Test (BIST)
+### 2. Scan Chain
+
+A single 64-bit chain captures all internal state:
+
+```
+operand_a(8) -> operand_b(8) -> operation(4) -> alu_result(8) ->
+flags Z/C/N/O(4) -> misr(8) -> bist_done(1) -> test_pass(1) ->
+fault_counter(8) -> cycle_counter(8) -> padding(6)
+```
+
+- `SCAN_CAPTURE` (`ui_in[3]`) loads the chain from live state in one clock
+- `SCAN_SHIFT` (`ui_in[6]`) shifts one bit per clock onto `SCAN_OUT`
+  (`uio_out[6]`), LSB first
+
+### 3. Built-In Self-Test (BIST)
 
 ```
 +-----------+    +----------------+    +-----------+
 |   LFSR    |--->|      ALU       |--->|   MISR    |
 |  Pattern  |    |  (Under Test)  |    | Response  |
-| Generator |    |                |    | Compactor |
-+-----------+    +----------------+    +-----------+
+| Generator |    |  Reference     |    | Compactor |
++-----------+    +-------+--------+    +-----------+
+                         |
+                   +-----v-----+
+                   | Comparator|----> pass/fail + fault counter
+                   +-----------+
 ```
 
-**BIST Features:**
-- 8-bit LFSR with primitive polynomial
-- 256 unique test patterns
-- MISR for response compaction
-- Automatic pass/fail detection
-- Signature comparison
+- 8-bit LFSR generates operand A; operand B is a nibble-swap of A; the
+  opcode comes from the low nibble of the LFSR value
+- 256 patterns run automatically (IDLE → LOAD → EXEC → DONE FSM)
+- Responses are compacted into an 8-bit MISR
+- Fault-free golden MISR signature: **0x93**
+- On completion `BIST_DONE` (`uio_out[4]`) asserts and **stays asserted**
+  until the next `BIST_START`, so it can be polled reliably
+- `TEST_PASS` (`uio_out[5]`) is high on a fault-free run, low when any
+  mismatch or active fault injection was observed
+- Detected faults increment an 8-bit fault counter (`STATUS_SEL = 10`)
 
-### 3. Fault Injection
+### 4. Fault Injection
 
-| Fault Location | Description | Type |
-|----------------|-------------|------|
-| 0 | Operand A bit 0 | Stuck-at-0 |
-| 1 | Operand A bit 0 | Stuck-at-1 |
-| 2 | Operand B bit 7 | Stuck-at-0 |
-| 3 | Operand B bit 7 | Stuck-at-1 |
-| 4 | ALU Result bit 3 | Stuck-at-0 |
-| 5 | ALU Result bit 3 | Stuck-at-1 |
-| 6 | Carry Flag | Stuck-at-0 |
-| 7 | Carry Flag | Stuck-at-1 |
+Configured via `uio_in` while the status output is driven:
 
-### 4. Test Modes
+| Field | Pins | Values |
+|-------|------|--------|
+| Enable | `uio_in[0]` | 1 = inject |
+| Type | `uio_in[2:1]` | 00 = stuck-at-0, 01 = stuck-at-1, 10 = inversion, 11 = coupling |
+| Bit | `uio_in[5:3]` | Result bit 0–7 the fault applies to |
 
-| Mode | Code | Description |
-|------|------|-------------|
-| Functional | 00 | Normal ALU operation |
-| Manual Test | 01 | User-controlled testing |
-| BIST | 10 | Automatic self-test |
-| Fault Inject | 11 | Testing with injected faults |
+The injected fault affects the normal ALU path, the serial-execution path
+and the BIST comparison simultaneously — so a faulted chip fails its own
+self-test, which is the core demonstration of the DFT flow.
+
+### 5. Status Readback Multiplexer
+
+| `STATUS_SEL` (`uio_in[7:6]`) | `uio_out` content |
+|------------------------------|-------------------|
+| 00 | Flags + BIST done/pass + scan out |
+| 01 | MISR signature |
+| 10 | Fault counter |
+| 11 | Free-running cycle counter |
 
 ---
 
@@ -158,199 +189,105 @@ SCAN_IN -> Operand_A(8) -> Operand_B(8) -> Operation(3) -> Zero(1) -> Carry(1) -
 
 | Pin | Name | Description |
 |-----|------|-------------|
-| ui_in[0] | DATA_IN | Serial data input for operands |
-| ui_in[1] | CTRL_BTN | Control button |
-| ui_in[2] | STEP_BTN | Step button |
-| ui_in[3] | MODE_SEL | Mode select MSB |
-| ui_in[4] | SCAN_EN | Scan chain enable |
-| ui_in[5] | SCAN_CLK | Scan chain clock |
-| ui_in[6] | SCAN_IN | Scan chain data input |
-| ui_in[7] | BIST_START | BIST start trigger |
+| ui_in[0] | DATA_IN | Serial data input for instruction loading |
+| ui_in[1] | LOAD_EN | Shift one bit into the instruction register |
+| ui_in[2] | EXECUTE | Execute the loaded instruction |
+| ui_in[3] | SCAN_CAPTURE | Capture state into the scan chain |
+| ui_in[4] | — | Unused |
+| ui_in[5] | — | Unused |
+| ui_in[6] | SCAN_SHIFT | Shift the scan chain one bit per clock |
+| ui_in[7] | BIST_START | Start a BIST run |
 
 ### Output Pins (uo_out)
 
 | Pin | Name | Description |
 |-----|------|-------------|
-| uo_out[0] | SEG_A | 7-segment segment A |
-| uo_out[1] | SEG_B | 7-segment segment B |
-| uo_out[2] | SEG_C | 7-segment segment C |
-| uo_out[3] | SEG_D | 7-segment segment D |
-| uo_out[4] | SEG_E | 7-segment segment E |
-| uo_out[5] | SEG_F | 7-segment segment F |
-| uo_out[6] | SEG_G | 7-segment segment G |
-| uo_out[7] | OP_LED | Operation indicator LED |
+| uo_out[7:0] | RESULT | 8-bit ALU result |
 
 ### Bidirectional Pins (uio)
 
+Inputs (fault configuration / status select):
+
 | Pin | Name | Description |
 |-----|------|-------------|
-| uio[0] | DIGIT_SEL0 | Digit select bit 0 |
-| uio[1] | DIGIT_SEL1 | Digit select bit 1 |
-| uio[2] | SCAN_OUT | Scan chain output |
-| uio[3] | BIST_DONE | BIST completion flag |
-| uio[4] | TEST_PASS | Test pass/fail |
-| uio[5] | FAULT_FLAG | Fault injected |
-| uio[6] | MODE_OUT0 | Current mode bit 0 |
-| uio[7] | MODE_OUT1 | Current mode bit 1 |
+| uio[0] | FAULT_ENABLE | Fault injection enable |
+| uio[2:1] | FAULT_TYPE | Fault type selection |
+| uio[5:3] | FAULT_BIT | Faulted result bit |
+| uio[7:6] | STATUS_SEL | Status output select |
 
----
+Outputs (status, selected by STATUS_SEL):
 
-## Display Interface
-
-### 7-Segment Display Format
-
-```
-+-------+-------+-------+-------+
-|  D3   |  D2   |  D1   |  D0   |
-+-------+-------+-------+-------+
-| Result| Result|  Op   | Flags |
-| High  | Low   | Code  | ZCNO  |
-+-------+-------+-------+-------+
-```
-
-### Display Examples
-
-ADD Operation (15 + 3 = 18):
-
-```
-+-------+-------+-------+-------+
-|   1   |   8   |   0   |   0   |
-|       |       |  ADD  | NoFlg |
-+-------+-------+-------+-------+
-```
+| Pin | Select 00 | Select 01 | Select 10 | Select 11 |
+|-----|-----------|-----------|-----------|-----------|
+| uio[7:0] | Flags/BIST/scan-out | MISR | Fault counter | Cycle counter |
 
 ---
 
 ## How to Test
 
-### Test Setup
+### RTL Simulation
 
-Required Hardware:
-- Tiny Tapeout board with iTALU chip
-- 4-digit 7-segment display (common cathode)
-- 2 push buttons
-- DIP switches or jumpers
-- LED with resistor
-- Connecting wires
+Requires [cocotb](https://docs.cocotb.org/) and Icarus Verilog:
 
-### Basic ALU Operation Test
+```sh
+cd test
+make -B
+```
 
-Step 1: Initialize
-1. Apply power
-2. Assert reset (rst_n = 0)
-3. Release reset (rst_n = 1)
-4. Set MODE_SEL = 0 (Functional Mode)
+This runs the full 11-test regression against `src/project.v`, producing
+`results.xml` and an FST waveform. See [test/README.md](../test/README.md)
+for gate-level simulation and waveform viewing.
 
-Step 2: Load Operation
-1. Press CTRL_BTN to enter operation selection
-2. Serial load 3 bits via DATA_IN
-3. Toggle DATA_IN for each bit
-4. Press STEP_BTN to advance
+### Regression Coverage
 
-Step 3: Load Operand A
-1. Serial load 8 bits via DATA_IN
-2. Toggle DATA_IN for each bit
-3. Press STEP_BTN after each bit
+| # | Test | What it verifies |
+|---|------|------------------|
+| 1 | `test_add` | Basic ADD: 0x0F + 0x03 = 0x12 |
+| 2 | `test_sub` | Basic SUB: 0x0A - 0x05 = 0x05 |
+| 3 | `test_all_alu_operations` | All 16 opcodes vs a Python reference model |
+| 4 | `test_alu_flags` | Zero/Carry/Negative/Overflow flag generation |
+| 5 | `test_normal_fault_injection` | Injected fault changes the ALU result |
+| 6 | `test_bist_pass` | Fault-free BIST completes, passes, MISR = 0x93 |
+| 7 | `test_bist_fault_detection` | All 4 fault types detected by the BIST |
+| 8 | `test_fault_counter` | Fault counter increments on detected faults |
+| 9 | `test_scan_chain` | Capture + shift returns operands correctly |
+| 10 | `test_cycle_counter` | Cycle counter advances with the clock |
+| 11 | `test_complete_system` | End-to-end: ALU, clean BIST, fault detection |
 
-Step 4: Load Operand B
-1. Serial load 8 bits via DATA_IN
-2. Toggle DATA_IN for each bit
-3. Press STEP_BTN after each bit
+Status: **11/11 passing**, GDS hardened successfully with LibreLane.
 
-Step 5: Execute
-1. Press CTRL_BTN to execute operation
-2. Observe result on 7-segment display
-3. Check status flags
+### Manual Testing on Hardware
 
-### Example Test Cases
+Basic operation:
 
-Test Case 1: Basic Addition
-- Operation: ADD (000)
-- Operand A: 0x0F (15)
-- Operand B: 0x03 (3)
-- Expected Result: 0x12 (18)
-- Expected Flags: 0000 (none)
+1. Reset the chip (`rst_n = 0`, then release).
+2. Shift a 20-bit instruction in LSB first via `DATA_IN`/`LOAD_EN`.
+3. Pulse `EXECUTE`; read the result on `uo_out` and the flags on `uio_out`.
 
-Test Case 2: Overflow Detection
-- Operation: ADD (000)
-- Operand A: 0x7F (127)
-- Operand B: 0x01 (1)
-- Expected Result: 0x80 (128)
-- Expected Flags: 1001 (Overflow + Negative)
+Self-test:
 
-Test Case 3: Subtraction with Borrow
-- Operation: SUB (001)
-- Operand A: 0x05 (5)
-- Operand B: 0x0A (10)
-- Expected Result: 0xFB (-5)
-- Expected Flags: 0110 (Carry + Negative)
+1. Pulse `BIST_START`.
+2. Poll `uio_out` until bit 4 (BIST done) is high.
+3. Check bit 5 (pass/fail) and optionally read the MISR via `STATUS_SEL = 01`.
 
-### BIST Testing
+Fault demonstration:
 
-1. Cycle to BIST Mode using CTRL_BTN
-2. Press CTRL_BTN again or set BIST_START = 1
-3. Wait for BIST_DONE = 1
-4. Check TEST_PASS for overall result
-5. Use STEP_BTN to single-step through patterns
+1. Set `FAULT_ENABLE` with a type/bit combination on `uio_in`.
+2. Re-run the BIST; `TEST_PASS` now goes low and the fault counter
+   (`STATUS_SEL = 10`) increments.
 
-### Fault Injection Testing
+Scan:
 
-1. Cycle to Fault Injection Mode
-2. Load operands as in functional mode
-3. Execute operation with fault injected
-4. Compare result with expected value
-5. Check FAULT_FLAG to verify fault detection
-
-### Scan Chain Testing
-
-1. Set SCAN_EN = 1
-2. Apply scan clock to SCAN_CLK
-3. Shift in test vectors via SCAN_IN
-4. Observe SCAN_OUT for response
-5. Set SCAN_EN = 0 for normal operation
+1. Pulse `SCAN_CAPTURE`, then clock `SCAN_SHIFT` 64 times reading `SCAN_OUT`.
 
 ---
 
 ## External Hardware
 
-### Required Components
-
-1. 4-digit 7-segment display (common cathode)
-2. 2 push buttons with pull-down resistors (10k ohm)
-3. DIP switches or jumpers for mode selection
-4. LED with 330 ohm resistor for operation indicator
-5. Connecting wires
-
-### Connection Diagram
-
-```
-Tiny Tapeout Board          External Hardware
--------------------         -----------------
-ui_in[0] DATA_IN     ---->  Push button or GPIO
-ui_in[1] CTRL_BTN    ---->  Push button
-ui_in[2] STEP_BTN    ---->  Push button
-ui_in[3] MODE_SEL    ---->  DIP switch
-ui_in[4] SCAN_EN     ---->  DIP switch
-ui_in[5] SCAN_CLK    ---->  Clock source
-ui_in[6] SCAN_IN     ---->  GPIO
-ui_in[7] BIST_START  ---->  Push button
-
-uo_out[0] SEG_A      ---->  7-seg segment A
-uo_out[1] SEG_B      ---->  7-seg segment B
-uo_out[2] SEG_C      ---->  7-seg segment C
-uo_out[3] SEG_D      ---->  7-seg segment D
-uo_out[4] SEG_E      ---->  7-seg segment E
-uo_out[5] SEG_F      ---->  7-seg segment F
-uo_out[6] SEG_G      ---->  7-seg segment G
-uo_out[7] OP_LED     ---->  LED with 330 ohm
-
-uio[0] DIGIT_SEL0    ---->  Digit 0 select
-uio[1] DIGIT_SEL1    ---->  Digit 1 select
-uio[2] SCAN_OUT      ---->  Logic analyzer
-uio[3] BIST_DONE     ---->  LED
-uio[4] TEST_PASS     ---->  LED
-uio[5] FAULT_FLAG    ---->  LED
-```
+No external hardware is strictly required — everything can be driven by a
+microcontroller or FPGA over the serial interface. For standalone bench use:
+push buttons/DIP switches for `ui_in`, LEDs or a logic analyzer on `uio_out`,
+and an LED bus or MCU reading `uo_out`.
 
 ---
 
@@ -358,12 +295,8 @@ uio[5] FAULT_FLAG    ---->  LED
 
 This project is licensed under Apache-2.0.
 
-## Author
-
-Your Name
-
 ## Acknowledgments
 
 - Tiny Tapeout for providing the platform
-- IHP for the 180nm PDK
+- IHP for the SG13G2 PDK
 - Open source EDA community
