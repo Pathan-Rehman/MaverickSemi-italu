@@ -722,110 +722,110 @@ module tt_um_italu (
 
     function [7:0] inject_fault_fn;
 
-        input [7:0] data;
-        input       enable;
-        input [1:0] type;
-        input [2:0] bit_index;
+    input [7:0] data;
+    input       enable;
+    input [1:0] fault_kind;
+    input [2:0] bit_index;
 
-        reg [7:0] temp;
+    reg [7:0] temp;
 
-        begin
+    begin
 
-            temp = data;
+        temp = data;
 
-            if (enable) begin
+        if (enable) begin
 
-                case (type)
+            case (fault_kind)
 
-                    // --------------------------------------------
-                    // STUCK AT ZERO
-                    // --------------------------------------------
+                // --------------------------------------------
+                // STUCK AT ZERO
+                // --------------------------------------------
 
-                    2'b00: begin
+                2'b00: begin
 
-                        temp[bit_index] = 1'b0;
+                    temp[bit_index] = 1'b0;
 
-                    end
-
-
-                    // --------------------------------------------
-                    // STUCK AT ONE
-                    // --------------------------------------------
-
-                    2'b01: begin
-
-                        temp[bit_index] = 1'b1;
-
-                    end
+                end
 
 
-                    // --------------------------------------------
-                    // INVERSION
-                    // --------------------------------------------
+                // --------------------------------------------
+                // STUCK AT ONE
+                // --------------------------------------------
 
-                    2'b10: begin
+                2'b01: begin
 
-                        temp[bit_index] =
-                            ~temp[bit_index];
+                    temp[bit_index] = 1'b1;
 
-                    end
-
-
-                    // --------------------------------------------
-                    // COUPLING
-                    // --------------------------------------------
-
-                    2'b11: begin
-
-                        case (bit_index)
-
-                            3'd0:
-                                temp[0] = data[7];
-
-                            3'd1:
-                                temp[1] = data[0];
-
-                            3'd2:
-                                temp[2] = data[1];
-
-                            3'd3:
-                                temp[3] = data[2];
-
-                            3'd4:
-                                temp[4] = data[3];
-
-                            3'd5:
-                                temp[5] = data[4];
-
-                            3'd6:
-                                temp[6] = data[5];
-
-                            3'd7:
-                                temp[7] = data[6];
-
-                            default:
-                                temp = data;
-
-                        endcase
-
-                    end
+                end
 
 
-                    default: begin
+                // --------------------------------------------
+                // INVERSION
+                // --------------------------------------------
 
-                        temp = data;
+                2'b10: begin
 
-                    end
+                    temp[bit_index] =
+                        ~temp[bit_index];
 
-                endcase
+                end
 
-            end
 
-            inject_fault_fn = temp;
+                // --------------------------------------------
+                // COUPLING
+                // --------------------------------------------
+
+                2'b11: begin
+
+                    case (bit_index)
+
+                        3'd0:
+                            temp[0] = data[7];
+
+                        3'd1:
+                            temp[1] = data[0];
+
+                        3'd2:
+                            temp[2] = data[1];
+
+                        3'd3:
+                            temp[3] = data[2];
+
+                        3'd4:
+                            temp[4] = data[3];
+
+                        3'd5:
+                            temp[5] = data[4];
+
+                        3'd6:
+                            temp[6] = data[5];
+
+                        3'd7:
+                            temp[7] = data[6];
+
+                        default:
+                            temp = data;
+
+                    endcase
+
+                end
+
+
+                default: begin
+
+                    temp = data;
+
+                end
+
+            endcase
 
         end
 
-    endfunction
+        inject_fault_fn = temp;
+
+    end
+
+endfunction
 
 
     // ============================================================
