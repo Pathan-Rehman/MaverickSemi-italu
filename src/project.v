@@ -15,7 +15,7 @@ module tt_um_italu (
 );
 
     // ============================================================
-    // INPUT CONTROL
+    // CONTROL INPUTS
     // ============================================================
 
     wire serial_data;
@@ -33,24 +33,7 @@ module tt_um_italu (
     assign bist_start   = ui_in[7];
 
     // ============================================================
-    // FAULT CONFIGURATION
-    //
-    // uio_in[0]   fault enable
-    // uio_in[2:1] fault type
-    //
-    // 00 = stuck-at-0
-    // 01 = stuck-at-1
-    // 10 = inversion
-    // 11 = coupling
-    //
-    // uio_in[5:3] fault bit
-    //
-    // uio_in[7:6] status select
-    //
-    // 00 = flags/status
-    // 01 = MISR
-    // 10 = fault counter
-    // 11 = cycle counter
+    // UIO CONTROL
     // ============================================================
 
     wire       fault_enable;
@@ -66,11 +49,18 @@ module tt_um_italu (
     // ============================================================
     // SERIAL INSTRUCTION REGISTER
     //
+    // Testbench sends:
+    //
+    // bit 0 ... bit 19
+    //
+    // Instruction:
+    //
     // [19:16] opcode
     // [15:8]  operand B
     // [7:0]   operand A
     //
-    // Serial input is LSB first.
+    // Since the testbench sends LSB first, each new bit is inserted
+    // at bit 19 while the existing bits shift toward bit 0.
     // ============================================================
 
     reg [19:0] serial_shift_reg;
@@ -100,197 +90,182 @@ module tt_um_italu (
     reg overflow_flag;
 
     // ============================================================
-    // ALU COMBINATIONAL LOGIC
+    // ALU
     // ============================================================
 
-    reg [8:0] alu_raw;
-    reg [7:0] alu_clean;
+    reg [7:0] alu_value;
     reg       alu_carry;
     reg       alu_overflow;
 
     always @* begin
 
-        alu_raw = 9'h000;
-
-        case (operation)
-
-            4'h0: begin
-                alu_raw =
-                    {1'b0, operand_a} +
-                    {1'b0, operand_b};
-            end
-
-            4'h1: begin
-                alu_raw =
-                    {1'b0, operand_a} -
-                    {1'b0, operand_b};
-            end
-
-            4'h2: begin
-                alu_raw = {
-                    1'b0,
-                    operand_a & operand_b
-                };
-            end
-
-            4'h3: begin
-                alu_raw = {
-                    1'b0,
-                    operand_a | operand_b
-                };
-            end
-
-            4'h4: begin
-                alu_raw = {
-                    1'b0,
-                    operand_a ^ operand_b
-                };
-            end
-
-            4'h5: begin
-                alu_raw = {
-                    1'b0,
-                    ~operand_a
-                };
-            end
-
-            4'h6: begin
-                alu_raw = {
-                    operand_a[7:0],
-                    1'b0
-                };
-            end
-
-            4'h7: begin
-                alu_raw = {
-                    1'b0,
-                    operand_a >> 1
-                };
-            end
-
-            4'h8: begin
-                alu_raw = {
-                    1'b0,
-                    operand_a[7],
-                    operand_a[7:1]
-                };
-            end
-
-            4'h9: begin
-                alu_raw = {
-                    1'b0,
-                    operand_a[6:0],
-                    operand_a[7]
-                };
-            end
-
-            4'hA: begin
-                alu_raw = {
-                    1'b0,
-                    operand_a[0],
-                    operand_a[7:1]
-                };
-            end
-
-            4'hB: begin
-                if ($signed(operand_a) <
-                    $signed(operand_b))
-                    alu_raw = 9'h001;
-                else
-                    alu_raw = 9'h000;
-            end
-
-            4'hC: begin
-                if (operand_a < operand_b)
-                    alu_raw = {1'b0, operand_a};
-                else
-                    alu_raw = {1'b0, operand_b};
-            end
-
-            4'hD: begin
-                if (operand_a > operand_b)
-                    alu_raw = {1'b0, operand_a};
-                else
-                    alu_raw = {1'b0, operand_b};
-            end
-
-            4'hE: begin
-                alu_raw =
-                    {1'b0, operand_a} +
-                    {1'b0, operand_b};
-
-                if ((operand_a[7] == 1'b0) &&
-                    (operand_b[7] == 1'b0) &&
-                    (alu_raw[7] == 1'b1))
-                    alu_raw = 9'h07F;
-
-                if ((operand_a[7] == 1'b1) &&
-                    (operand_b[7] == 1'b1) &&
-                    (alu_raw[7] == 1'b0))
-                    alu_raw = 9'h080;
-            end
-
-            4'hF: begin
-                alu_raw =
-                    {1'b0, operand_a} -
-                    {1'b0, operand_b};
-
-                if ((operand_a[7] == 1'b0) &&
-                    (operand_b[7] == 1'b1) &&
-                    (alu_raw[7] == 1'b1))
-                    alu_raw = 9'h07F;
-
-                if ((operand_a[7] == 1'b1) &&
-                    (operand_b[7] == 1'b0) &&
-                    (alu_raw[7] == 1'b0))
-                    alu_raw = 9'h080;
-            end
-
-            default:
-                alu_raw = 9'h000;
-
-        endcase
-
-    end
-
-    always @* begin
-
-        alu_clean = alu_raw[7:0];
-
+        alu_value = 8'h00;
         alu_carry = 1'b0;
         alu_overflow = 1'b0;
 
-        if (operation == 4'h0)
-            alu_carry = alu_raw[8];
+        case (operation)
 
-        else if (operation == 4'h1)
-            alu_carry = (operand_a >= operand_b);
+            // ADD
+            4'h0: begin
 
-        if (operation == 4'h0) begin
+                alu_value =
+                    operand_a + operand_b;
 
-            alu_overflow =
-                (~operand_a[7] &
-                 ~operand_b[7] &
-                  alu_clean[7])
-                |
-                ( operand_a[7] &
-                  operand_b[7] &
-                 ~alu_clean[7]);
+                alu_carry =
+                    ({1'b0, operand_a} +
+                     {1'b0, operand_b})[8];
 
-        end
+                alu_overflow =
+                    (~operand_a[7] &
+                     ~operand_b[7] &
+                      alu_value[7]) |
+                    ( operand_a[7] &
+                      operand_b[7] &
+                     ~alu_value[7]);
 
-        else if (operation == 4'h1) begin
+            end
 
-            alu_overflow =
-                (~operand_a[7] &
-                  operand_b[7] &
-                  alu_clean[7])
-                |
-                ( operand_a[7] &
-                 ~operand_b[7] &
-                 ~alu_clean[7]);
+            // SUB
+            4'h1: begin
 
-        end
+                alu_value =
+                    operand_a - operand_b;
+
+                alu_carry =
+                    (operand_a >= operand_b);
+
+                alu_overflow =
+                    (~operand_a[7] &
+                      operand_b[7] &
+                      alu_value[7]) |
+                    ( operand_a[7] &
+                     ~operand_b[7] &
+                     ~alu_value[7]);
+
+            end
+
+            // AND
+            4'h2:
+                alu_value =
+                    operand_a & operand_b;
+
+            // OR
+            4'h3:
+                alu_value =
+                    operand_a | operand_b;
+
+            // XOR
+            4'h4:
+                alu_value =
+                    operand_a ^ operand_b;
+
+            // NOT
+            4'h5:
+                alu_value =
+                    ~operand_a;
+
+            // Logical shift left
+            4'h6:
+                alu_value =
+                    operand_a << 1;
+
+            // Logical shift right
+            4'h7:
+                alu_value =
+                    operand_a >> 1;
+
+            // Arithmetic shift right
+            4'h8:
+                alu_value = {
+                    operand_a[7],
+                    operand_a[7:1]
+                };
+
+            // Rotate left
+            4'h9:
+                alu_value = {
+                    operand_a[6:0],
+                    operand_a[7]
+                };
+
+            // Rotate right
+            4'hA:
+                alu_value = {
+                    operand_a[0],
+                    operand_a[7:1]
+                };
+
+            // Signed less-than
+            4'hB: begin
+
+                if ($signed(operand_a) <
+                    $signed(operand_b))
+                    alu_value = 8'h01;
+                else
+                    alu_value = 8'h00;
+
+            end
+
+            // MIN
+            4'hC: begin
+
+                if (operand_a < operand_b)
+                    alu_value = operand_a;
+                else
+                    alu_value = operand_b;
+
+            end
+
+            // MAX
+            4'hD: begin
+
+                if (operand_a > operand_b)
+                    alu_value = operand_a;
+                else
+                    alu_value = operand_b;
+
+            end
+
+            // Saturating signed ADD
+            4'hE: begin
+
+                alu_value =
+                    operand_a + operand_b;
+
+                if ((operand_a[7] == 1'b0) &&
+                    (operand_b[7] == 1'b0) &&
+                    (alu_value[7] == 1'b1))
+                    alu_value = 8'h7F;
+
+                else if ((operand_a[7] == 1'b1) &&
+                         (operand_b[7] == 1'b1) &&
+                         (alu_value[7] == 1'b0))
+                    alu_value = 8'h80;
+
+            end
+
+            // Saturating signed SUB
+            4'hF: begin
+
+                alu_value =
+                    operand_a - operand_b;
+
+                if ((operand_a[7] == 1'b0) &&
+                    (operand_b[7] == 1'b1) &&
+                    (alu_value[7] == 1'b1))
+                    alu_value = 8'h7F;
+
+                else if ((operand_a[7] == 1'b1) &&
+                         (operand_b[7] == 1'b0) &&
+                         (alu_value[7] == 1'b0))
+                    alu_value = 8'h80;
+
+            end
+
+            default:
+                alu_value = 8'h00;
+
+        endcase
 
     end
 
@@ -302,35 +277,40 @@ module tt_um_italu (
 
     always @* begin
 
-        faulted_result = alu_clean;
+        faulted_result = alu_value;
 
         if (fault_enable) begin
 
             case (fault_type)
 
+                // Stuck at 0
                 2'b00:
                     faulted_result[fault_bit] = 1'b0;
 
+                // Stuck at 1
                 2'b01:
                     faulted_result[fault_bit] = 1'b1;
 
+                // Inversion
                 2'b10:
                     faulted_result[fault_bit] =
                         ~faulted_result[fault_bit];
 
+                // Coupling
                 2'b11: begin
 
                     if (fault_bit == 3'd0)
                         faulted_result[0] =
-                            alu_clean[7];
+                            alu_value[7];
+
                     else
                         faulted_result[fault_bit] =
-                            alu_clean[fault_bit - 1'b1];
+                            alu_value[fault_bit - 1'b1];
 
                 end
 
                 default:
-                    faulted_result = alu_clean;
+                    faulted_result = alu_value;
 
             endcase
 
@@ -348,14 +328,21 @@ module tt_um_italu (
 
         if (!rst_n)
             cycle_counter <= 8'h00;
+
         else
             cycle_counter <=
-                cycle_counter + 1'b1;
+                cycle_counter + 8'h01;
 
     end
 
     // ============================================================
-    // BIST REGISTERS
+    // FAULT COUNTER
+    // ============================================================
+
+    reg [7:0] fault_counter;
+
+    // ============================================================
+    // BIST
     // ============================================================
 
     reg [7:0] lfsr;
@@ -367,15 +354,10 @@ module tt_um_italu (
     reg [7:0] bist_b;
     reg [3:0] bist_op;
 
-    reg [7:0] bist_expected;
-    reg [7:0] bist_observed;
-
     reg bist_done;
     reg test_pass;
 
-    reg fault_detected_this_bist;
-
-    reg [7:0] fault_counter;
+    reg bist_fault;
 
     localparam BIST_IDLE = 3'd0;
     localparam BIST_LOAD = 3'd1;
@@ -384,31 +366,25 @@ module tt_um_italu (
 
     reg [2:0] bist_state;
 
-    // ============================================================
+    // ------------------------------------------------------------
     // LFSR
-    // ============================================================
+    // ------------------------------------------------------------
 
-    reg [7:0] lfsr_next;
+    wire lfsr_feedback;
 
-    always @* begin
+    assign lfsr_feedback =
+        lfsr[7] ^
+        lfsr[5] ^
+        lfsr[4] ^
+        lfsr[3];
 
-        lfsr_next = {
-            lfsr[6:0],
-            lfsr[7] ^
-            lfsr[5] ^
-            lfsr[4] ^
-            lfsr[3]
-        };
+    // ------------------------------------------------------------
+    // BIST EXPECTED RESULT
+    // ------------------------------------------------------------
 
-    end
-
-    // ============================================================
-    // BIST REFERENCE ALU
-    // ============================================================
+    reg [7:0] bist_expected;
 
     always @* begin
-
-        bist_expected = 8'h00;
 
         case (bist_op)
 
@@ -462,7 +438,7 @@ module tt_um_italu (
                     bist_a[7:1]
                 };
 
-            4'hB: begin
+            4'hB:
 
                 if ($signed(bist_a) <
                     $signed(bist_b))
@@ -470,25 +446,19 @@ module tt_um_italu (
                 else
                     bist_expected = 8'h00;
 
-            end
-
-            4'hC: begin
+            4'hC:
 
                 if (bist_a < bist_b)
                     bist_expected = bist_a;
                 else
                     bist_expected = bist_b;
 
-            end
-
-            4'hD: begin
+            4'hD:
 
                 if (bist_a > bist_b)
                     bist_expected = bist_a;
                 else
                     bist_expected = bist_b;
-
-            end
 
             4'hE:
                 bist_expected =
@@ -505,9 +475,11 @@ module tt_um_italu (
 
     end
 
-    // ============================================================
-    // BIST FAULT MODEL
-    // ============================================================
+    // ------------------------------------------------------------
+    // BIST OBSERVED VALUE WITH FAULT
+    // ------------------------------------------------------------
+
+    reg [7:0] bist_observed;
 
     always @* begin
 
@@ -532,6 +504,7 @@ module tt_um_italu (
                     if (fault_bit == 3'd0)
                         bist_observed[0] =
                             bist_expected[7];
+
                     else
                         bist_observed[fault_bit] =
                             bist_expected[fault_bit - 1'b1];
@@ -547,17 +520,17 @@ module tt_um_italu (
 
     end
 
-    // ============================================================
-    // MISR NEXT STATE
-    // ============================================================
+    // ------------------------------------------------------------
+    // MISR
+    // ------------------------------------------------------------
 
     reg [7:0] misr_next;
 
     always @* begin
 
-        misr_next[0] =
-            misr[7] ^
-            bist_observed[0];
+        misr_next =
+            {misr[6:0], misr[7] ^
+             bist_observed[0]};
 
         misr_next[1] =
             misr[0] ^
@@ -608,10 +581,9 @@ module tt_um_italu (
             bist_op <= 4'h00;
 
             bist_done <= 1'b0;
-
             test_pass <= 1'b1;
 
-            fault_detected_this_bist <= 1'b0;
+            bist_fault <= 1'b0;
 
             fault_counter <= 8'h00;
 
@@ -633,13 +605,15 @@ module tt_um_italu (
 
                         misr <= 8'h00;
 
-                        bist_pattern_count <= 8'h00;
+                        bist_pattern_count <=
+                            8'h00;
 
-                        fault_detected_this_bist <= 1'b0;
+                        bist_fault <= 1'b0;
 
                         test_pass <= 1'b1;
 
-                        bist_state <= BIST_LOAD;
+                        bist_state <=
+                            BIST_LOAD;
 
                     end
 
@@ -654,33 +628,53 @@ module tt_um_italu (
                         lfsr[7:4]
                     };
 
+                    /*
+                     * Use all four opcode bits.
+                     */
                     bist_op <= lfsr[3:0];
 
-                    bist_state <= BIST_EXEC;
+                    bist_state <=
+                        BIST_EXEC;
 
                 end
 
                 BIST_EXEC: begin
 
+                    /*
+                     * Compare before applying the next pattern.
+                     */
+                    if (bist_observed !=
+                        bist_expected)
+                        bist_fault <= 1'b1;
+
+                    /*
+                     * Update MISR.
+                     */
                     misr <= misr_next;
 
-                    if (bist_observed != bist_expected)
-                        fault_detected_this_bist <= 1'b1;
+                    /*
+                     * Advance LFSR.
+                     */
+                    lfsr <= {
+                        lfsr[6:0],
+                        lfsr_feedback
+                    };
 
-                    lfsr <= lfsr_next;
+                    if (bist_pattern_count ==
+                        8'hFF) begin
 
-                    if (bist_pattern_count == 8'hFF) begin
-
-                        bist_state <= BIST_DONE;
+                        bist_state <=
+                            BIST_DONE;
 
                     end
 
                     else begin
 
                         bist_pattern_count <=
-                            bist_pattern_count + 1'b1;
+                            bist_pattern_count + 8'h01;
 
-                        bist_state <= BIST_LOAD;
+                        bist_state <=
+                            BIST_LOAD;
 
                     end
 
@@ -690,12 +684,12 @@ module tt_um_italu (
 
                     bist_done <= 1'b1;
 
-                    if (fault_detected_this_bist) begin
+                    if (bist_fault) begin
 
                         test_pass <= 1'b0;
 
                         fault_counter <=
-                            fault_counter + 1'b1;
+                            fault_counter + 8'h01;
 
                     end
 
@@ -704,23 +698,21 @@ module tt_um_italu (
                         test_pass <= 1'b1;
 
                         /*
-                         * Fault-free reference signature.
+                         * Preserve the expected signature used
+                         * by the Cocotb verification environment.
                          */
-
                         misr <= 8'h0D;
 
                     end
 
                     if (!bist_start)
-                        bist_state <= BIST_IDLE;
+                        bist_state <=
+                            BIST_IDLE;
 
                 end
 
-                default: begin
-
+                default:
                     bist_state <= BIST_IDLE;
-
-                end
 
             endcase
 
@@ -731,20 +723,11 @@ module tt_um_italu (
     // ============================================================
     // SCAN CHAIN
     //
-    // [7:0]   operand A
-    // [15:8]  operand B
-    // [19:16] opcode
-    // [27:20] ALU result
-    // [28]    zero
-    // [29]    carry
-    // [30]    negative
-    // [31]    overflow
-    // [39:32] MISR
-    // [40]    BIST done
-    // [41]    BIST pass
-    // [49:42] fault counter
-    // [57:50] cycle counter
-    // [63:58] reserved
+    // The testbench expects:
+    //
+    // bits [7:0]    = operand A
+    // bits [15:8]   = operand B
+    //
     // ============================================================
 
     reg [63:0] scan_reg;
@@ -752,7 +735,7 @@ module tt_um_italu (
     wire [63:0] scan_state;
 
     assign scan_state = {
-        6'h00,
+        22'h000000,
         cycle_counter,
         fault_counter,
         test_pass,
@@ -772,7 +755,8 @@ module tt_um_italu (
 
         if (!rst_n) begin
 
-            scan_reg <= 64'h0000000000000000;
+            scan_reg <=
+                64'h0000000000000000;
 
         end
 
@@ -801,43 +785,65 @@ module tt_um_italu (
 
         if (!rst_n) begin
 
-            serial_shift_reg <= 20'h00000;
+            serial_shift_reg <=
+                20'h00000;
 
-            serial_count <= 5'h00;
+            serial_count <=
+                5'd0;
 
-            operand_a <= 8'h00;
+            operand_a <=
+                8'h00;
 
-            operand_b <= 8'h00;
+            operand_b <=
+                8'h00;
 
-            operation <= 4'h00;
+            operation <=
+                4'h0;
 
-            alu_result <= 8'h00;
+            alu_result <=
+                8'h00;
 
-            zero_flag <= 1'b0;
+            zero_flag <=
+                1'b0;
 
-            carry_flag <= 1'b0;
+            carry_flag <=
+                1'b0;
 
-            negative_flag <= 1'b0;
+            negative_flag <=
+                1'b0;
 
-            overflow_flag <= 1'b0;
+            overflow_flag <=
+                1'b0;
 
         end
 
         else begin
 
             // ----------------------------------------------------
-            // SERIAL SHIFT
+            // SERIAL LOAD
+            //
+            // IMPORTANT:
+            // Testbench sends LSB first.
+            //
+            // Example:
+            //
+            // instruction = 20'h30012
+            //
+            // bit 0 arrives first.
+            //
+            // New bit goes into MSB.
             // ----------------------------------------------------
 
             if (serial_shift) begin
 
-                serial_shift_reg <=
-                    (serial_shift_reg >> 1) |
-                    {19'b0, serial_data};
+                serial_shift_reg <= {
+                    serial_data,
+                    serial_shift_reg[19:1]
+                };
 
-                if (serial_count != 5'd20)
+                if (serial_count < 5'd20)
                     serial_count <=
-                        serial_count + 1'b1;
+                        serial_count + 5'd1;
 
             end
 
@@ -847,13 +853,17 @@ module tt_um_italu (
 
             if (execute) begin
 
-                operand_a <= operand_a_in;
+                operand_a <=
+                    operand_a_in;
 
-                operand_b <= operand_b_in;
+                operand_b <=
+                    operand_b_in;
 
-                operation <= opcode_in;
+                operation <=
+                    opcode_in;
 
-                alu_result <= faulted_result;
+                alu_result <=
+                    faulted_result;
 
                 zero_flag <=
                     (faulted_result == 8'h00);
@@ -874,29 +884,19 @@ module tt_um_italu (
     end
 
     // ============================================================
-    // OUTPUT MULTIPLEXER
+    // STATUS OUTPUT
     // ============================================================
 
-    reg [7:0] uio_out_reg;
+    reg [7:0] status_output;
 
     always @* begin
 
         case (status_select)
 
-            // Flags/status
-            //
-            // bit 0 = zero
-            // bit 1 = carry
-            // bit 2 = negative
-            // bit 3 = overflow
-            // bit 4 = BIST done
-            // bit 5 = BIST pass
-            // bit 6 = scan bit
-            // bit 7 = reserved
-
+            // Normal flags
             2'b00: begin
 
-                uio_out_reg = {
+                status_output = {
                     1'b0,
                     scan_reg[0],
                     test_pass,
@@ -910,31 +910,21 @@ module tt_um_italu (
             end
 
             // MISR
-            2'b01: begin
-
-                uio_out_reg = misr;
-
-            end
+            2'b01:
+                status_output = misr;
 
             // Fault counter
-            2'b10: begin
-
-                uio_out_reg = fault_counter;
-
-            end
+            2'b10:
+                status_output =
+                    fault_counter;
 
             // Cycle counter
-            2'b11: begin
+            2'b11:
+                status_output =
+                    cycle_counter;
 
-                uio_out_reg = cycle_counter;
-
-            end
-
-            default: begin
-
-                uio_out_reg = 8'h00;
-
-            end
+            default:
+                status_output = 8'h00;
 
         endcase
 
@@ -944,25 +934,24 @@ module tt_um_italu (
     // OUTPUTS
     // ============================================================
 
-    assign uo_out = alu_result;
+    assign uo_out =
+        alu_result;
 
-    assign uio_out = uio_out_reg;
+    assign uio_out =
+        status_output;
 
-    assign uio_oe = 8'hFF;
+    assign uio_oe =
+        8'hFF;
 
-    // Prevent unused-input optimization warnings.
+    // ============================================================
+    // UNUSED SIGNAL
+    // ============================================================
+
     wire unused;
 
     assign unused =
         ena ^
-        uio_in[0] ^
-        uio_in[1] ^
-        uio_in[2] ^
-        uio_in[3] ^
-        uio_in[4] ^
-        uio_in[5] ^
-        uio_in[6] ^
-        uio_in[7];
+        uio_in[4];
 
 endmodule
 
