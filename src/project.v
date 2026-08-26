@@ -6,41 +6,50 @@
  *
  * Features:
  *   - 16 ALU operations
- *   - Serial instruction loader
- *   - LFSR based LBIST
+ *   - Serial instruction interface
+ *   - LFSR-based LBIST
  *   - MISR response compaction
+ *   - Real BIST signature comparison
  *   - Programmable fault injection
  *   - Fault detection counter
- *   - Performance/cycle counter
+ *   - Cycle counter
  *   - 64-bit diagnostic scan chain
  *   - ALU status flags
  *
- * Pin mapping
+ * ============================================================
+ * ui_in
+ * ============================================================
  *
- * ui_in[0] : serial instruction data
- * ui_in[1] : serial instruction shift enable
+ * ui_in[0] : Serial data
+ * ui_in[1] : Serial instruction shift enable
  * ui_in[2] : ALU execute
- * ui_in[3] : scan capture
- * ui_in[4] : reserved
- * ui_in[5] : reserved
- * ui_in[6] : scan shift enable
+ * ui_in[3] : Scan capture
+ * ui_in[4] : Reserved
+ * ui_in[5] : Reserved
+ * ui_in[6] : Scan shift
  * ui_in[7] : BIST start
  *
- * uio_in[0]   : fault enable
- * uio_in[2:1] : fault type
- *                 00 = stuck-at-0
- *                 01 = stuck-at-1
- *                 10 = inversion
- *                 11 = coupling
+ * ============================================================
+ * uio_in
+ * ============================================================
  *
- * uio_in[5:3] : fault bit select
- * uio_in[7:6] : status select
+ * uio_in[0]   : Fault enable
  *
- * Status select:
- *   00 = normal status
- *   01 = MISR
- *   10 = fault detection count
- *   11 = cycle counter
+ * uio_in[2:1] : Fault type
+ *
+ *               00 = Stuck-at-0
+ *               01 = Stuck-at-1
+ *               10 = Invert
+ *               11 = Coupling
+ *
+ * uio_in[5:3] : Fault bit select
+ *
+ * uio_in[7:6] : Status select
+ *
+ *               00 = Normal status
+ *               01 = MISR
+ *               10 = Fault counter
+ *               11 = Cycle counter
  *
  */
 
@@ -66,16 +75,19 @@ module tt_um_italu (
     // ============================================================
 
     /*
-     * Expected MISR signature for:
+     * Golden MISR signature.
      *
-     *   LFSR seed       = 8'h01
-     *   256 test patterns
-     *   ALU opcode      = LFSR[3:0]
-     *   operand A       = LFSR
-     *   operand B       = {LFSR[3:0],LFSR[7:4]}
+     * This signature was calculated for:
      *
-     * and the MISR defined below.
+     *   LFSR seed = 8'h01
+     *   256 patterns
+     *   operand A = LFSR
+     *   operand B = {LFSR[3:0], LFSR[7:4]}
+     *   opcode    = LFSR[3:0]
+     *
+     * with the MISR implementation below.
      */
+
     localparam [7:0] EXPECTED_MISR = 8'h0D;
 
 
@@ -101,13 +113,13 @@ module tt_um_italu (
     // ============================================================
 
     /*
-     * Instruction format:
+     * 20-bit instruction:
      *
-     * [19:16] = opcode
+     * [19:16] = operation
      * [15:8]  = operand B
      * [7:0]   = operand A
      *
-     * The instruction is shifted in LSB first.
+     * Loaded LSB first.
      */
 
     reg [19:0] serial_shift_reg;
@@ -118,7 +130,6 @@ module tt_um_italu (
     // ============================================================
 
     reg [7:0] lfsr;
-
     reg [7:0] misr;
 
     reg [2:0] bist_state;
@@ -126,54 +137,21 @@ module tt_um_italu (
     reg [7:0] pattern_count;
 
     reg       bist_done;
-
     reg       test_pass;
 
 
     // ============================================================
-    // BIST / PERFORMANCE COUNTERS
+    // DIAGNOSTIC / PERFORMANCE REGISTERS
     // ============================================================
 
-    /*
-     * Number of BIST runs which ended with a bad signature.
-     */
-
     reg [7:0] fault_detect_count;
-
-
-    /*
-     * Free-running cycle counter.
-     */
 
     reg [7:0] cycle_count;
 
 
     // ============================================================
-    // DIAGNOSTIC SCAN REGISTER
+    // SCAN REGISTERS
     // ============================================================
-
-    /*
-     * 64-bit diagnostic scan register.
-     *
-     * Captured contents:
-     *
-     *   [63:60] unused
-     *   [59:52] pattern_count
-     *   [51:49] bist_state
-     *   [48]    test_pass
-     *   [47]    overflow
-     *   [46]    negative
-     *   [45]    carry
-     *   [44]    zero
-     *   [43:36] MISR
-     *   [35:28] LFSR
-     *   [27:20] ALU result
-     *   [19:16] operation
-     *   [15:8]  operand B
-     *   [7:0]   operand A
-     *
-     * Scan shifts LSB first.
-     */
 
     reg [63:0] scan_reg;
 
@@ -181,7 +159,7 @@ module tt_um_italu (
 
 
     // ============================================================
-    // FAULT INJECTION CONTROL
+    // FAULT CONTROL
     // ============================================================
 
     wire       fault_enable;
@@ -203,28 +181,28 @@ module tt_um_italu (
 
 
     // ============================================================
-    // ALU RESULT FUNCTION
+    // ALU FUNCTION
     // ============================================================
 
     /*
-     * Opcode table
+     * Operation encoding:
      *
-     * 0x0 : ADD
-     * 0x1 : SUB
-     * 0x2 : AND
-     * 0x3 : OR
-     * 0x4 : XOR
-     * 0x5 : NOT
-     * 0x6 : SLL
-     * 0x7 : SRL
-     * 0x8 : SRA
-     * 0x9 : ROL
-     * 0xA : ROR
-     * 0xB : signed SLT
-     * 0xC : MIN
-     * 0xD : MAX
-     * 0xE : signed saturating ADD
-     * 0xF : signed saturating SUB
+     * 0x0 = ADD
+     * 0x1 = SUB
+     * 0x2 = AND
+     * 0x3 = OR
+     * 0x4 = XOR
+     * 0x5 = NOT
+     * 0x6 = SLL
+     * 0x7 = SRL
+     * 0x8 = SRA
+     * 0x9 = ROL
+     * 0xA = ROR
+     * 0xB = Signed LT
+     * 0xC = MIN
+     * 0xD = MAX
+     * 0xE = Saturating ADD
+     * 0xF = Saturating SUB
      */
 
     function [7:0] alu_result_fn;
@@ -233,11 +211,13 @@ module tt_um_italu (
         input [7:0] b;
         input [3:0] op;
 
-        reg [7:0] tmp;
+        reg [7:0] result;
+        reg [7:0] temp;
 
         begin
 
-            tmp = 8'h00;
+            result = 8'h00;
+            temp = 8'h00;
 
             case (op)
 
@@ -246,7 +226,9 @@ module tt_um_italu (
                 // ------------------------------------------------
 
                 4'h0: begin
-                    tmp = a + b;
+
+                    result = a + b;
+
                 end
 
 
@@ -255,7 +237,9 @@ module tt_um_italu (
                 // ------------------------------------------------
 
                 4'h1: begin
-                    tmp = a - b;
+
+                    result = a - b;
+
                 end
 
 
@@ -264,7 +248,9 @@ module tt_um_italu (
                 // ------------------------------------------------
 
                 4'h2: begin
-                    tmp = a & b;
+
+                    result = a & b;
+
                 end
 
 
@@ -273,7 +259,9 @@ module tt_um_italu (
                 // ------------------------------------------------
 
                 4'h3: begin
-                    tmp = a | b;
+
+                    result = a | b;
+
                 end
 
 
@@ -282,7 +270,9 @@ module tt_um_italu (
                 // ------------------------------------------------
 
                 4'h4: begin
-                    tmp = a ^ b;
+
+                    result = a ^ b;
+
                 end
 
 
@@ -291,16 +281,20 @@ module tt_um_italu (
                 // ------------------------------------------------
 
                 4'h5: begin
-                    tmp = ~a;
+
+                    result = ~a;
+
                 end
 
 
                 // ------------------------------------------------
-                // SHIFT LEFT LOGICAL
+                // SHIFT LEFT
                 // ------------------------------------------------
 
                 4'h6: begin
-                    tmp = a << 1;
+
+                    result = a << 1;
+
                 end
 
 
@@ -309,7 +303,9 @@ module tt_um_italu (
                 // ------------------------------------------------
 
                 4'h7: begin
-                    tmp = a >> 1;
+
+                    result = a >> 1;
+
                 end
 
 
@@ -318,10 +314,12 @@ module tt_um_italu (
                 // ------------------------------------------------
 
                 4'h8: begin
-                    tmp = {
+
+                    result = {
                         a[7],
                         a[7:1]
                     };
+
                 end
 
 
@@ -330,10 +328,12 @@ module tt_um_italu (
                 // ------------------------------------------------
 
                 4'h9: begin
-                    tmp = {
+
+                    result = {
                         a[6:0],
                         a[7]
                     };
+
                 end
 
 
@@ -342,10 +342,12 @@ module tt_um_italu (
                 // ------------------------------------------------
 
                 4'hA: begin
-                    tmp = {
+
+                    result = {
                         a[0],
                         a[7:1]
                     };
+
                 end
 
 
@@ -356,9 +358,9 @@ module tt_um_italu (
                 4'hB: begin
 
                     if ($signed(a) < $signed(b))
-                        tmp = 8'h01;
+                        result = 8'h01;
                     else
-                        tmp = 8'h00;
+                        result = 8'h00;
 
                 end
 
@@ -370,9 +372,9 @@ module tt_um_italu (
                 4'hC: begin
 
                     if (a < b)
-                        tmp = a;
+                        result = a;
                     else
-                        tmp = b;
+                        result = b;
 
                 end
 
@@ -384,9 +386,9 @@ module tt_um_italu (
                 4'hD: begin
 
                     if (a > b)
-                        tmp = a;
+                        result = a;
                     else
-                        tmp = b;
+                        result = b;
 
                 end
 
@@ -397,33 +399,36 @@ module tt_um_italu (
 
                 4'hE: begin
 
-                    tmp = a + b;
+                    temp = a + b;
+
+                    result = temp;
 
                     /*
                      * Positive overflow:
                      *
-                     * 0 + 0 -> 1
+                     * positive + positive = negative
                      */
 
                     if ((!a[7]) &&
                         (!b[7]) &&
-                        tmp[7]) begin
+                        temp[7]) begin
 
-                        tmp = 8'h7F;
+                        result = 8'h7F;
 
                     end
+
 
                     /*
                      * Negative overflow:
                      *
-                     * 1 + 1 -> 0
+                     * negative + negative = positive
                      */
 
                     else if (a[7] &&
                              b[7] &&
-                             (!tmp[7])) begin
+                             (!temp[7])) begin
 
-                        tmp = 8'h80;
+                        result = 8'h80;
 
                     end
 
@@ -436,33 +441,36 @@ module tt_um_italu (
 
                 4'hF: begin
 
-                    tmp = a - b;
+                    temp = a - b;
+
+                    result = temp;
 
                     /*
                      * Positive overflow:
                      *
-                     * positive - negative
+                     * positive - negative = negative
                      */
 
                     if ((!a[7]) &&
                         b[7] &&
-                        tmp[7]) begin
+                        temp[7]) begin
 
-                        tmp = 8'h7F;
+                        result = 8'h7F;
 
                     end
+
 
                     /*
                      * Negative overflow:
                      *
-                     * negative - positive
+                     * negative - positive = positive
                      */
 
                     else if (a[7] &&
                              (!b[7]) &&
-                             (!tmp[7])) begin
+                             (!temp[7])) begin
 
-                        tmp = 8'h80;
+                        result = 8'h80;
 
                     end
 
@@ -470,12 +478,14 @@ module tt_um_italu (
 
 
                 default: begin
-                    tmp = 8'h00;
+
+                    result = 8'h00;
+
                 end
 
             endcase
 
-            alu_result_fn = tmp;
+            alu_result_fn = result;
 
         end
 
@@ -483,7 +493,7 @@ module tt_um_italu (
 
 
     // ============================================================
-    // ALU CARRY FUNCTION
+    // CARRY FUNCTION
     // ============================================================
 
     function alu_carry_fn;
@@ -518,7 +528,7 @@ module tt_um_italu (
 
                 // SUB
                 //
-                // Carry = 1 when no unsigned borrow occurs.
+                // Carry is 1 when no unsigned borrow occurs.
                 //
 
                 4'h1: begin
@@ -531,38 +541,50 @@ module tt_um_italu (
                 end
 
 
-                // SLL
+                // Shift left
                 4'h6: begin
+
                     alu_carry_fn = a[7];
+
                 end
 
 
-                // SRL
+                // Shift right
                 4'h7: begin
+
                     alu_carry_fn = a[0];
+
                 end
 
 
-                // SRA
+                // Arithmetic shift right
                 4'h8: begin
+
                     alu_carry_fn = a[0];
+
                 end
 
 
-                // ROL
+                // Rotate left
                 4'h9: begin
+
                     alu_carry_fn = a[7];
+
                 end
 
 
-                // ROR
+                // Rotate right
                 4'hA: begin
+
                     alu_carry_fn = a[0];
+
                 end
 
 
                 default: begin
+
                     alu_carry_fn = 1'b0;
+
                 end
 
             endcase
@@ -576,6 +598,11 @@ module tt_um_italu (
     // OVERFLOW FUNCTION
     // ============================================================
 
+    /*
+     * This implementation intentionally avoids expressions such
+     * as (a+b)[7], because Icarus Verilog rejects those constructs.
+     */
+
     function alu_overflow_fn;
 
         input [7:0] a;
@@ -583,14 +610,21 @@ module tt_um_italu (
         input [3:0] op;
 
         reg [7:0] result;
+        reg [7:0] add_result;
+        reg [7:0] sub_result;
 
         begin
+
+            add_result = a + b;
+
+            sub_result = a - b;
 
             result = alu_result_fn(
                 a,
                 b,
                 op
             );
+
 
             case (op)
 
@@ -601,13 +635,13 @@ module tt_um_italu (
                 4'h0: begin
 
                     alu_overflow_fn =
-                        (~a[7] &
-                         ~b[7] &
-                          result[7]) |
+                        ((!a[7]) &&
+                         (!b[7]) &&
+                         add_result[7]) ||
 
-                        (a[7] &
-                         b[7] &
-                         ~result[7]);
+                        (a[7] &&
+                         b[7] &&
+                         (!add_result[7]));
 
                 end
 
@@ -619,11 +653,8 @@ module tt_um_italu (
                 4'h1: begin
 
                     alu_overflow_fn =
-                        (a[7] ^
-                         b[7]) &
-
-                        (result[7] ^
-                         a[7]);
+                        (a[7] ^ b[7]) &&
+                        (sub_result[7] ^ a[7]);
 
                 end
 
@@ -634,19 +665,14 @@ module tt_um_italu (
 
                 4'hE: begin
 
-                    /*
-                     * Recalculate using the unsaturated
-                     * mathematical result.
-                     */
-
                     alu_overflow_fn =
-                        (~a[7] &
-                         ~b[7] &
-                         (a + b)[7]) |
+                        ((!a[7]) &&
+                         (!b[7]) &&
+                         add_result[7]) ||
 
-                        (a[7] &
-                         b[7] &
-                         ~(a + b)[7]);
+                        (a[7] &&
+                         b[7] &&
+                         (!add_result[7]));
 
                 end
 
@@ -658,14 +684,15 @@ module tt_um_italu (
                 4'hF: begin
 
                     alu_overflow_fn =
-                        (a[7] ^
-                         b[7]) &
-
-                        (((a - b)[7]) ^
-                         a[7]);
+                        (a[7] ^ b[7]) &&
+                        (sub_result[7] ^ a[7]);
 
                 end
 
+
+                // ------------------------------------------------
+                // Other operations
+                // ------------------------------------------------
 
                 default: begin
 
@@ -687,15 +714,10 @@ module tt_um_italu (
     /*
      * Fault types:
      *
-     * 00 : Stuck-at-0
-     * 01 : Stuck-at-1
-     * 10 : Bit inversion
-     * 11 : Coupling fault
-     *
-     * Coupling implementation:
-     *
-     * selected bit copies the previous bit.
-     *
+     * 00 = stuck-at-0
+     * 01 = stuck-at-1
+     * 10 = inversion
+     * 11 = coupling
      */
 
     function [7:0] inject_fault_fn;
@@ -814,11 +836,13 @@ module tt_um_italu (
 
     wire       carry_wire;
 
+    wire       overflow_wire;
+
+    wire [7:0] faulted_alu_out_wire;
+
     wire       zero_wire;
 
     wire       negative_wire;
-
-    wire       overflow_wire;
 
 
     assign alu_out_wire =
@@ -845,12 +869,7 @@ module tt_um_italu (
         );
 
 
-    // ============================================================
-    // FAULTED CURRENT ALU
-    // ============================================================
-
-    wire [7:0] faulted_alu_out_wire;
-
+    // Fault injection occurs after the ALU.
 
     assign faulted_alu_out_wire =
         inject_fault_fn(
@@ -870,7 +889,7 @@ module tt_um_italu (
 
 
     // ============================================================
-    // NORMAL SERIAL INSTRUCTION DECODE
+    // SERIAL INSTRUCTION DECODE
     // ============================================================
 
     wire [7:0] serial_operand_a;
@@ -893,7 +912,7 @@ module tt_um_italu (
 
 
     // ============================================================
-    // NORMAL SERIAL INSTRUCTION ALU
+    // SERIAL INSTRUCTION ALU
     // ============================================================
 
     wire [7:0] normal_alu_out;
@@ -953,17 +972,11 @@ module tt_um_italu (
 
 
     // ============================================================
-    // MISR NEXT STATE
+    // MISR
     // ============================================================
 
     /*
-     * Parallel response MISR.
-     *
-     * Every ALU response bit participates in the signature.
-     *
-     * This is intentionally stronger than the previous MISR,
-     * which only used ALU result bit 0 and therefore could not
-     * detect faults on many of the other result bits.
+     * Every ALU result bit contributes to the MISR.
      */
 
     wire [7:0] misr_next;
@@ -1000,16 +1013,14 @@ module tt_um_italu (
 
 
     // ============================================================
-    // MAIN ALU + BIST SEQUENTIAL BLOCK
+    // MAIN ALU + BIST SEQUENTIAL LOGIC
     // ============================================================
-    //
-    // IMPORTANT:
-    //
-    // Every register controlled here has exactly ONE sequential
-    // driver. This avoids the multiple-driver synthesis problem
-    // from the previous implementation.
-    //
-    // ============================================================
+
+    /*
+     * All shared ALU/BIST registers are controlled here.
+     *
+     * This prevents multiple sequential drivers.
+     */
 
     always @(posedge clk or negedge rst_n) begin
 
@@ -1037,7 +1048,7 @@ module tt_um_italu (
 
 
             // ----------------------------------------------------
-            // SERIAL INSTRUCTION REGISTER
+            // SERIAL REGISTER
             // ----------------------------------------------------
 
             serial_shift_reg <= 20'h00000;
@@ -1061,7 +1072,7 @@ module tt_um_italu (
 
 
             // ----------------------------------------------------
-            // COUNTERS
+            // FAULT COUNTER
             // ----------------------------------------------------
 
             fault_detect_count <= 8'h00;
@@ -1069,15 +1080,10 @@ module tt_um_italu (
         end
         else begin
 
-            // ====================================================
-            // BIST CONTROLLER
-            // ====================================================
-
             case (bist_state)
 
-
                 // =================================================
-                // IDLE / NORMAL ALU
+                // IDLE
                 // =================================================
 
                 3'b000: begin
@@ -1086,7 +1092,7 @@ module tt_um_italu (
 
 
                     // ------------------------------------------------
-                    // SERIAL INSTRUCTION LOAD
+                    // SERIAL SHIFT
                     // ------------------------------------------------
 
                     if (ui_in[1]) begin
@@ -1100,7 +1106,7 @@ module tt_um_italu (
 
 
                     // ------------------------------------------------
-                    // NORMAL ALU EXECUTE
+                    // NORMAL ALU EXECUTION
                     // ------------------------------------------------
 
                     if (ui_in[2]) begin
@@ -1164,7 +1170,7 @@ module tt_um_italu (
                 3'b001: begin
 
                     /*
-                     * Current LFSR value becomes the test pattern.
+                     * Current LFSR value is applied to the ALU.
                      */
 
                     operand_a <= lfsr;
@@ -1193,13 +1199,13 @@ module tt_um_italu (
 
 
                 // =================================================
-                // BIST EXECUTION + MISR COMPACTION
+                // BIST EXECUTION
                 // =================================================
 
                 3'b010: begin
 
                     // ------------------------------------------------
-                    // Capture faulted ALU result
+                    // Capture ALU response
                     // ------------------------------------------------
 
                     alu_result <=
@@ -1223,7 +1229,7 @@ module tt_um_italu (
 
 
                     // ------------------------------------------------
-                    // MISR UPDATE
+                    // Update MISR
                     // ------------------------------------------------
 
                     misr <= misr_next;
@@ -1251,17 +1257,13 @@ module tt_um_italu (
 
 
                 // =================================================
-                // BIST COMPLETE / SIGNATURE CHECK
+                // BIST SIGNATURE CHECK
                 // =================================================
 
                 3'b011: begin
 
                     bist_done <= 1'b1;
 
-
-                    /*
-                     * REAL signature comparison.
-                     */
 
                     if (misr == EXPECTED_MISR) begin
 
@@ -1279,7 +1281,7 @@ module tt_um_italu (
 
 
                     /*
-                     * Wait until BIST start is released.
+                     * Return to idle when BIST start is released.
                      */
 
                     if (!ui_in[7]) begin
@@ -1309,7 +1311,7 @@ module tt_um_italu (
 
 
     // ============================================================
-    // PERFORMANCE COUNTER
+    // CYCLE COUNTER
     // ============================================================
 
     always @(posedge clk or negedge rst_n) begin
@@ -1330,14 +1332,34 @@ module tt_um_italu (
 
 
     // ============================================================
-    // 64-BIT DIAGNOSTIC SCAN CHAIN
+    // 64-BIT DIAGNOSTIC SCAN
     // ============================================================
+
+    /*
+     * Scan contents:
+     *
+     * [63:60] = zero
+     * [59:52] = pattern_count
+     * [51:49] = bist_state
+     * [48]    = test_pass
+     * [47]    = overflow
+     * [46]    = negative
+     * [45]    = carry
+     * [44]    = zero
+     * [43:36] = MISR
+     * [35:28] = LFSR
+     * [27:20] = ALU result
+     * [19:16] = operation
+     * [15:8]  = operand B
+     * [7:0]   = operand A
+     */
 
     always @(posedge clk or negedge rst_n) begin
 
         if (!rst_n) begin
 
-            scan_reg <= 64'h0000000000000000;
+            scan_reg <=
+                64'h0000000000000000;
 
             scan_out <= 1'b0;
 
@@ -1345,7 +1367,7 @@ module tt_um_italu (
         else begin
 
             // ----------------------------------------------------
-            // Capture internal state
+            // Scan capture
             // ----------------------------------------------------
 
             if (ui_in[3]) begin
@@ -1388,7 +1410,7 @@ module tt_um_italu (
 
 
             // ----------------------------------------------------
-            // Shift scan chain
+            // Scan shift
             // ----------------------------------------------------
 
             else if (ui_in[6]) begin
@@ -1409,14 +1431,7 @@ module tt_um_italu (
 
 
     // ============================================================
-    // OUTPUTS
-    // ============================================================
-
-    assign uo_out = alu_result;
-
-
-    // ============================================================
-    // STATUS OUTPUT MULTIPLEXER
+    // OUTPUT STATUS REGISTER
     // ============================================================
 
     reg [7:0] uio_out_reg;
@@ -1428,29 +1443,32 @@ module tt_um_italu (
 
         case (status_select)
 
-            // ----------------------------------------------------
-            // STATUS
-            // ----------------------------------------------------
+            // =================================================
+            // NORMAL STATUS
+            // =================================================
 
             2'b00: begin
 
-                uio_out_reg[0] = zero_flag;
+                uio_out_reg[0] =
+                    zero_flag;
 
-                uio_out_reg[1] = carry_flag;
+                uio_out_reg[1] =
+                    carry_flag;
 
-                uio_out_reg[2] = negative_flag;
+                uio_out_reg[2] =
+                    negative_flag;
 
-                uio_out_reg[3] = overflow_flag;
+                uio_out_reg[3] =
+                    overflow_flag;
 
-                uio_out_reg[4] = bist_done;
+                uio_out_reg[4] =
+                    bist_done;
 
-                uio_out_reg[5] = test_pass;
+                uio_out_reg[5] =
+                    test_pass;
 
-                uio_out_reg[6] = scan_out;
-
-                /*
-                 * BIST active indicator
-                 */
+                uio_out_reg[6] =
+                    scan_out;
 
                 uio_out_reg[7] =
                     (bist_state != 3'b000);
@@ -1458,9 +1476,9 @@ module tt_um_italu (
             end
 
 
-            // ----------------------------------------------------
+            // =================================================
             // MISR
-            // ----------------------------------------------------
+            // =================================================
 
             2'b01: begin
 
@@ -1470,9 +1488,9 @@ module tt_um_italu (
             end
 
 
-            // ----------------------------------------------------
+            // =================================================
             // FAULT DETECTION COUNT
-            // ----------------------------------------------------
+            // =================================================
 
             2'b10: begin
 
@@ -1482,9 +1500,9 @@ module tt_um_italu (
             end
 
 
-            // ----------------------------------------------------
+            // =================================================
             // CYCLE COUNT
-            // ----------------------------------------------------
+            // =================================================
 
             2'b11: begin
 
@@ -1505,11 +1523,21 @@ module tt_um_italu (
     end
 
 
+    // ============================================================
+    // OUTPUT CONNECTIONS
+    // ============================================================
+
+    assign uo_out =
+        alu_result;
+
+
     assign uio_out =
         uio_out_reg;
 
 
-    // All bidirectional pins are currently outputs.
+    /*
+     * All bidirectional pins are configured as outputs.
+     */
 
     assign uio_oe =
         8'hFF;
@@ -1522,11 +1550,9 @@ module tt_um_italu (
     wire _unused;
 
     assign _unused =
-        &{
-            ena,
-            ui_in[5:4]
-        };
-
+        ena ^
+        ui_in[4] ^
+        ui_in[5];
 
 endmodule
 
