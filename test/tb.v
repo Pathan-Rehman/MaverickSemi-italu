@@ -1,9 +1,7 @@
 `default_nettype none
 `timescale 1ns/1ps
 
-module tb (
-    // Testbench doesn't have ports
-);
+module tb;
 
     // Clock generation
     reg clk;
@@ -18,9 +16,6 @@ module tb (
     wire [7:0] uo_out;
     wire [7:0] uio_out;
     wire [7:0] uio_oe;
-    
-    // Clock generation (50 MHz)
-    always #10 clk = ~clk; // 20ns period = 50 MHz
     
     // Instantiate DUT
     tt_um_italu dut (
@@ -41,17 +36,10 @@ module tb (
         ui_in = 0;
         uio_in = 0;
         ena = 1;
-        
-        // Reset sequence
-        #100;
-        rst_n = 1;
-        
-        // Test sequence
-        #1000;
-        
-        // End simulation
-        $finish;
     end
+    
+    // Remove the $finish call - let cocotb control simulation
+    // Clock is controlled by cocotb, so remove the always block
     
     // VCD dump
     initial begin
