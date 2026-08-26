@@ -43,14 +43,14 @@ module tt_um_italu (
     // uo_out[6:0]  : 7-segment display data
     // uo_out[7]    : Operation LED indicator
     //
-    // uio[0]       : Digit select (bidirectional)
-    // uio[1]       : Test data (bidirectional)
+    // uio[0]       : Digit select bit 0 (output)
+    // uio[1]       : Digit select bit 1 (output)
     // uio[2]       : Scan output (output)
     // uio[3]       : BIST done (output)
     // uio[4]       : Pass/Fail indicator (output)
     // uio[5]       : Fault injected indicator (output)
-    // uio[6]       : Reserved
-    // uio[7]       : Reserved
+    // uio[6]       : Mode bit 0 (output)
+    // uio[7]       : Mode bit 1 (output)
 
     wire user_data_in    = ui_in[0];
     wire control_button  = ui_in[1];
@@ -110,7 +110,6 @@ module tt_um_italu (
     reg [7:0] misr;
     reg [7:0] test_pattern;
     reg [7:0] expected_result;
-    reg [7:0] scan_chain [0:31]; // 32 flip-flops for scan
     reg       bist_active;
     reg       fault_injected;
     reg [2:0] fault_location;
@@ -135,17 +134,31 @@ module tt_um_italu (
     reg [31:0] scan_reg;
     reg scan_out_reg;
 
+    // Display registers
+    reg [1:0] display_digit;
+    reg [3:0] display_value;
+    reg [6:0] segment_data_reg;
+    reg [3:0] digit_select_reg;
+    reg operation_led_reg;
+
+    // BIST registers
+    reg [1:0] bist_state;
+    reg [7:0] pattern_count;
+    reg       bist_enable;
+    reg [7:0] bist_signature;
+    reg       bist_done_reg;
+
     // =========================================================================
     // Button Debouncing
     // =========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            button_sync1 <= 0;
-            button_sync2 <= 0;
-            button_prev  <= 0;
-            step_sync1   <= 0;
-            step_sync2   <= 0;
-            step_prev    <= 0;
+            button_sync1 <= 1'b0;
+            button_sync2 <= 1'b0;
+            button_prev  <= 1'b0;
+            step_sync1   <= 1'b0;
+            step_sync2   <= 1'b0;
+            step_prev    <= 1'b0;
         end else begin
             button_sync1 <= control_button;
             button_sync2 <= button_sync1;
@@ -227,7 +240,7 @@ module tt_um_italu (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             user_state        <= USER_IDLE;
-            input_counter     <= 0;
+            input_counter     <= 4'b0000;
             current_mode      <= MODE_FUNCTIONAL;
             operand_a         <= 8'h00;
             operand_b         <= 8'h00;
@@ -243,9 +256,8 @@ module tt_um_italu (
                 USER_IDLE: begin
                     execute_operation <= 1'b0;
                     if (button_pressed) begin
-                        // Cycle through modes
                         current_mode <= current_mode + 1'b1;
-                        input_counter <= 0;
+                        input_counter <= 4'b0000;
                         user_state <= USER_LOAD_OP;
                     end else if (step_pressed && (current_mode == MODE_BIST)) begin
                         user_state <= USER_EXECUTE;
@@ -257,7 +269,7 @@ module tt_um_italu (
                         operation <= {operation[1:0], user_data_in};
                         input_counter <= input_counter + 1'b1;
                     end else begin
-                        input_counter <= 0;
+                        input_counter <= 4'b0000;
                         user_state <= USER_LOAD_A;
                     end
                 end
@@ -267,7 +279,7 @@ module tt_um_italu (
                         operand_a <= {operand_a[6:0], user_data_in};
                         input_counter <= input_counter + 1'b1;
                     end else begin
-                        input_counter <= 0;
+                        input_counter <= 4'b0000;
                         user_state <= USER_LOAD_B;
                     end
                 end
@@ -277,7 +289,7 @@ module tt_um_italu (
                         operand_b <= {operand_b[6:0], user_data_in};
                         input_counter <= input_counter + 1'b1;
                     end else begin
-                        input_counter <= 0;
+                        input_counter <= 4'b0000;
                         user_state <= USER_EXECUTE;
                     end
                 end
@@ -289,8 +301,8 @@ module tt_um_italu (
                         if (current_mode == MODE_FAULT_INJECT) begin
                             fault_injected <= 1'b1;
                             case (fault_location)
-                                3'b000: operand_a[0] <= 1'b0; // Stuck-at-0
-                                3'b001: operand_a[0] <= 1'b1; // Stuck-at-1
+                                3'b000: operand_a[0] <= 1'b0;
+                                3'b001: operand_a[0] <= 1'b1;
                                 3'b010: operand_b[7] <= 1'b0;
                                 3'b011: operand_b[7] <= 1'b1;
                                 3'b100: alu_result[3] <= 1'b0;
@@ -305,7 +317,6 @@ module tt_um_italu (
                 end
                 
                 USER_VERIFY: begin
-                    // Calculate expected result
                     case (operation)
                         OP_ADD: expected_result <= operand_a + operand_b;
                         OP_SUB: expected_result <= operand_a - operand_b;
@@ -358,12 +369,6 @@ module tt_um_italu (
     localparam [1:0] BIST_APPLY    = 2'b10;
     localparam [1:0] BIST_VERIFY   = 2'b11;
 
-    reg [1:0] bist_state;
-    reg [7:0] pattern_count;
-    reg       bist_enable;
-    reg [7:0] bist_signature;
-    reg       bist_done_reg;
-
     wire lfsr_feedback = lfsr[7] ^ lfsr[5] ^ lfsr[4] ^ lfsr[3];
 
     always @(posedge clk or negedge rst_n) begin
@@ -389,19 +394,14 @@ module tt_um_italu (
                 end
                 
                 BIST_GENERATE: begin
-                    // Generate next pattern
                     lfsr <= {lfsr[6:0], lfsr_feedback};
-                    
-                    // Apply to ALU inputs
                     operand_a <= lfsr;
                     operand_b <= {lfsr[3:0], lfsr[7:4]};
                     operation <= lfsr[2:0];
-                    
                     bist_state <= BIST_APPLY;
                 end
                 
                 BIST_APPLY: begin
-                    // Compact result into MISR
                     misr <= {misr[6:0], misr[7] ^ misr[5] ^ alu_result[0]};
                     
                     if (pattern_count == 8'hFF) begin
@@ -441,7 +441,6 @@ module tt_um_italu (
             scan_reg     <= {scan_in, scan_reg[31:1]};
             scan_out_reg <= scan_reg[0];
         end else begin
-            // Load from functional registers
             scan_reg <= {operand_a, operand_b, operation, zero_flag, 
                         carry_flag, negative_flag, overflow_flag, 
                         alu_result[7:0]};
@@ -451,42 +450,35 @@ module tt_um_italu (
     // =========================================================================
     // 7-Segment Display Controller
     // =========================================================================
-    reg [1:0] display_digit;
-    reg [3:0] display_value;
-    reg [6:0] segment_data_reg;
-    reg [3:0] digit_select_reg;
-
-    // BCD to 7-segment decoder
     function [6:0] seg7;
         input [3:0] digit;
         begin
             case (digit)
-                4'h0: seg7 = 7'b1000000; // 0
-                4'h1: seg7 = 7'b1111001; // 1
-                4'h2: seg7 = 7'b0100100; // 2
-                4'h3: seg7 = 7'b0110000; // 3
-                4'h4: seg7 = 7'b0011001; // 4
-                4'h5: seg7 = 7'b0010010; // 5
-                4'h6: seg7 = 7'b0000010; // 6
-                4'h7: seg7 = 7'b1111000; // 7
-                4'h8: seg7 = 7'b0000000; // 8
-                4'h9: seg7 = 7'b0010000; // 9
-                4'hA: seg7 = 7'b0001000; // A
-                4'hB: seg7 = 7'b0000011; // b
-                4'hC: seg7 = 7'b1000110; // C
-                4'hD: seg7 = 7'b0100001; // d
-                4'hE: seg7 = 7'b0000110; // E
-                4'hF: seg7 = 7'b0001110; // F
+                4'h0: seg7 = 7'b1000000;
+                4'h1: seg7 = 7'b1111001;
+                4'h2: seg7 = 7'b0100100;
+                4'h3: seg7 = 7'b0110000;
+                4'h4: seg7 = 7'b0011001;
+                4'h5: seg7 = 7'b0010010;
+                4'h6: seg7 = 7'b0000010;
+                4'h7: seg7 = 7'b1111000;
+                4'h8: seg7 = 7'b0000000;
+                4'h9: seg7 = 7'b0010000;
+                4'hA: seg7 = 7'b0001000;
+                4'hB: seg7 = 7'b0000011;
+                4'hC: seg7 = 7'b1000110;
+                4'hD: seg7 = 7'b0100001;
+                4'hE: seg7 = 7'b0000110;
+                4'hF: seg7 = 7'b0001110;
                 default: seg7 = 7'b1111111;
             endcase
         end
     endfunction
 
-    // Display multiplexing
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            display_digit    <= 0;
-            display_value    <= 0;
+            display_digit    <= 2'b00;
+            display_value    <= 4'h0;
             segment_data_reg <= 7'b1111111;
             digit_select_reg <= 4'b1111;
         end else begin
@@ -504,17 +496,33 @@ module tt_um_italu (
                     segment_data_reg <= seg7(display_value);
                 end
                 2'b10: begin
-                    // Display operation code
                     display_value    <= {1'b0, operation};
                     digit_select_reg <= 4'b1011;
                     segment_data_reg <= seg7(display_value);
                 end
                 2'b11: begin
-                    // Display flags
                     display_value    <= {zero_flag, carry_flag, negative_flag, overflow_flag};
                     digit_select_reg <= 4'b0111;
                     segment_data_reg <= seg7(display_value);
                 end
+                default: begin
+                    display_value    <= 4'h0;
+                    digit_select_reg <= 4'b1111;
+                    segment_data_reg <= 7'b1111111;
+                end
+            endcase
+        end
+    end
+
+    // Operation LED
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            operation_led_reg <= 1'b0;
+        end else begin
+            case (operation)
+                OP_ADD: operation_led_reg <= 1'b1;
+                OP_SUB: operation_led_reg <= 1'b0;
+                default: operation_led_reg <= 1'b1;
             endcase
         end
     end
@@ -522,14 +530,9 @@ module tt_um_italu (
     // =========================================================================
     // Output Assignments
     // =========================================================================
-    // 7-segment display output
     assign uo_out[6:0] = segment_data_reg;
+    assign uo_out[7]   = operation_led_reg;
     
-    // Operation LED indicator
-    assign uo_out[7] = (operation == OP_ADD) ? 1'b1 :
-                       (operation == OP_SUB) ? 1'b0 : 1'b1;
-
-    // Bidirectional I/O assignments
     assign uio_out[0] = digit_select_reg[0];
     assign uio_out[1] = digit_select_reg[1];
     assign uio_out[2] = scan_out_reg;
@@ -538,19 +541,15 @@ module tt_um_italu (
     assign uio_out[5] = fault_injected;
     assign uio_out[6] = current_mode[0];
     assign uio_out[7] = current_mode[1];
-
-    assign uio_oe[0] = 1'b1;  // digit_select[0] output
-    assign uio_oe[1] = 1'b1;  // digit_select[1] output
-    assign uio_oe[2] = 1'b1;  // scan_out output
-    assign uio_oe[3] = 1'b1;  // bist_done output
-    assign uio_oe[4] = 1'b1;  // test_pass output
-    assign uio_oe[5] = 1'b1;  // fault_injected output
-    assign uio_oe[6] = 1'b1;  // mode[0] output
-    assign uio_oe[7] = 1'b1;  // mode[1] output
+    
+    assign uio_oe = 8'b11111111;
 
     // List all unused inputs to prevent warnings
     wire _unused = &{ena, uio_in[0], uio_in[1], uio_in[2], uio_in[3], 
                      uio_in[4], uio_in[5], uio_in[6], uio_in[7], 
-                     mode_select_msb, 1'b0};
+                     mode_select_msb, user_data_buffer, test_pattern,
+                     test_vector_count, fault_coverage, bist_active,
+                     button_prev, step_prev, execute_operation,
+                     bist_signature, bist_enable, 1'b0};
 
 endmodule
