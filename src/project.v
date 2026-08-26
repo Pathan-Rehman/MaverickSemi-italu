@@ -1170,7 +1170,14 @@ module tt_um_italu (
 
     assign unused =
         ena ^
-        uio_in[?];
+        uio_in[7] ^
+        uio_in[6] ^
+        uio_in[5] ^
+        uio_in[4] ^
+        uio_in[3] ^
+        uio_in[2] ^
+        uio_in[1] ^
+        uio_in[0];
 
 endmodule
 
