@@ -5,7 +5,7 @@ project:
   discord:      ""
   description:  "8-bit ALU with DFT features including BIST and scan chain"
   language:     "Verilog"
-  clock_hz:     0       # No specific clock frequency requirement
+  clock_hz:     50000000       # No specific clock frequency requirement
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
   tiles: "1x1"
